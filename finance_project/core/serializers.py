@@ -25,7 +25,7 @@ class UserSerializer(serializers.ModelSerializer):
 class CurrencySerializer(serializers.ModelSerializer):
     class Meta:
         model = Currency
-        fields = '__all__'  # sax
+        fields = '__all__'  
 
 # ---- Category ----
 class CategorySerializer(serializers.ModelSerializer):

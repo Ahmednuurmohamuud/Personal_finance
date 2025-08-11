@@ -20,6 +20,8 @@ from .signals import create_audit
 from .tasks import send_email_notification_task, generate_due_recurring_transactions_task
 from django.conf import settings
 
+
+
 # -------- Auth endpoints --------
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
@@ -30,6 +32,7 @@ def register(request):
     refresh = RefreshToken.for_user(user)
     return Response({"user": UserSerializer(user).data, "access": str(refresh.access_token), "refresh": str(refresh)})
 
+# -------- Login endpoint --------
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def login(request):
@@ -39,6 +42,7 @@ def login(request):
     refresh = RefreshToken.for_user(user)
     return Response({"access": str(refresh.access_token), "refresh": str(refresh)})
 
+# -------- Logout endpoint --------
 @api_view(["POST"])
 def logout(request):
     try:
@@ -47,6 +51,7 @@ def logout(request):
         pass
     return Response(status=204)
 
+# -------- User profile endpoints -------- me endpoints
 @api_view(["GET","PUT","PATCH","DELETE"])
 def me(request):
     user = request.user
@@ -60,7 +65,9 @@ def me(request):
         user.is_active = False
         user.save(update_fields=["is_active"])
         return Response(status=204)
+    
 
+# -------- Verify email --------
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def verify_email(request):
@@ -69,19 +76,23 @@ def verify_email(request):
     request.user.save(update_fields=["is_verified"])
     return Response({"verified": True})
 
+# -------- Reset password --------
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def reset_password(request):
     # stub: send email
     return Response({"status":"email_sent"})
 
+# -------- Reset password confirm --------
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def reset_password_confirm(request):
     # stub: change password
     return Response({"status":"password_changed"})
 
-@api_view(["POST"])
+
+ # Google OAuth login
+@api_view(["POST"]) 
 @permission_classes([permissions.AllowAny])
 def google_oauth(request):
     token = request.data.get("id_token")
@@ -120,26 +131,26 @@ class OwnedModelViewSet(viewsets.ModelViewSet):
         obj.save(update_fields=["is_deleted","updated_at"])
         return Response(self.get_serializer(obj).data)
 
-# -------- Currencies --------
+# -------- Currencies -------- Kaliya GET currency.
 class CurrencyViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Currency.objects.filter(is_active=True)
     serializer_class = CurrencySerializer
     permission_classes = [permissions.AllowAny]
     lookup_field = "code"
 
-# -------- Categories --------
+# -------- Categories --------   CRUD categories oo leh OwnedModelViewSet
 class CategoryViewSet(OwnedModelViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
     filterset_fields = ["parent"]
 
-# -------- Accounts --------
+# -------- Accounts --------  CRUD accounts
 class AccountViewSet(OwnedModelViewSet):
     queryset = Account.objects.all()
     serializer_class = AccountSerializer
     filterset_fields = ["type","is_active"]
 
-# -------- Transactions --------
+# -------- Transactions --------  CRUD transactions + Search API.
 class TransactionViewSet(OwnedModelViewSet):
     queryset = Transaction.objects.select_related("account","target_account","category")
     serializer_class = TransactionSerializer
@@ -159,7 +170,7 @@ class TransactionViewSet(OwnedModelViewSet):
               .order_by("-rank","-transaction_date")[:100])
         return Response(TransactionSerializer(qs, many=True).data)
 
-# Splits under transaction
+# Splits under transaction  -------- Splits transactions
 class TransactionSplitViewSet(mixins.CreateModelMixin,
                               mixins.UpdateModelMixin,
                               mixins.DestroyModelMixin,
@@ -170,7 +181,7 @@ class TransactionSplitViewSet(mixins.CreateModelMixin,
         return TransactionSplit.objects.filter(transaction_id=self.kwargs["transaction_pk"],
                                                transaction__user=self.request.user)
 
-# Attachments
+# Attachments  --------  Upload attachments to transactions
 class AttachmentViewSet(mixins.CreateModelMixin,
                         mixins.DestroyModelMixin,
                         mixins.ListModelMixin,
@@ -183,7 +194,7 @@ class AttachmentViewSet(mixins.CreateModelMixin,
         tx = Transaction.objects.get(pk=self.kwargs["transaction_pk"], user=self.request.user)
         serializer.save(transaction=tx)
 
-# -------- Recurring Bills --------
+# -------- Recurring Bills --------  CRUD + generate transaction from bill.
 class RecurringBillViewSet(OwnedModelViewSet):
     queryset = RecurringBill.objects.all()
     serializer_class = RecurringBillSerializer
@@ -196,13 +207,13 @@ class RecurringBillViewSet(OwnedModelViewSet):
         tx_id = generate_single_recurring_tx(bill.id)
         return Response({"transaction_id": tx_id}, status=201)
 
-# -------- Budgets --------
+# -------- Budgets --------   CRUD budgets
 class BudgetViewSet(OwnedModelViewSet):
     queryset = Budget.objects.all()
     serializer_class = BudgetSerializer
     filterset_class = BudgetFilter
 
-# -------- Notifications --------
+# -------- Notifications --------  Read-only notifications + mark as read.
 class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = NotificationSerializer
     def get_queryset(self):
@@ -212,7 +223,7 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
         n = self.get_object(); n.is_read = True; n.save(update_fields=["is_read"])
         return Response({"is_read": True})
 
-# -------- Exchange Rates --------
+# -------- Exchange Rates --------  aqris-only + get rate for given date.
 class ExchangeRateViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ExchangeRateSerializer
     def get_queryset(self):
@@ -225,7 +236,7 @@ class ExchangeRateViewSet(viewsets.ReadOnlyModelViewSet):
         except ExchangeRate.DoesNotExist:
             return Response({"detail":"Not found"}, status=404)
 
-# -------- Audit Logs --------
+# -------- Audit Logs --------  AuditLogViewSet → aqris-only audit logs.
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = AuditLogSerializer
     filterset_class = AuditLogFilter

@@ -1,4 +1,4 @@
-# core/tasks.py
+# core/tasks.py  ------ automation iyo background jobs
 from celery import shared_task
 from django.utils import timezone
 from datetime import timedelta, date
