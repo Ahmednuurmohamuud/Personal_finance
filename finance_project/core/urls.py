@@ -31,6 +31,10 @@ auth_urls = [
     path("users/google-oauth/", google_oauth),
 ]
 
+
+
+
+
 urlpatterns = [
     path("", include(router.urls)),
     path("", include(split_router.urls)),

@@ -1,7 +1,5 @@
-from django.shortcuts import render
-
-# Create your views here.
 # core/views.py
+from django.shortcuts import render
 from rest_framework import viewsets, mixins, permissions, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
@@ -91,7 +89,7 @@ def reset_password_confirm(request):
     return Response({"status":"password_changed"})
 
 
- # Google OAuth login
+ # 
 @api_view(["POST"]) 
 @permission_classes([permissions.AllowAny])
 def google_oauth(request):
