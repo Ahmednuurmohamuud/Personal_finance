@@ -108,9 +108,10 @@ class BudgetSerializer(serializers.ModelSerializer):
 
 # ---- Notification ----
 class NotificationSerializer(serializers.ModelSerializer):
+    timestamp = serializers.DateTimeField(source="sent_at")
     class Meta:
         model = Notification
-        fields = "_all_"
+        fields = ["id", "user", "type", "message", "is_read", "timestamp", "related_id", "email_sent"]
 
 # ---- ExchangeRate ----
 class ExchangeRateSerializer(serializers.ModelSerializer):

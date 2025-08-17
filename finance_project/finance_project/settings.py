@@ -191,12 +191,17 @@ CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="redis://redis:6379
 CELERY_TIMEZONE = "Africa/Mogadishu"
 CELERY_TASK_ALWAYS_EAGER = env.bool("CELERY_TASK_ALWAYS_EAGER", default=False)
 
-# Email (Anymail/SendGrid) — optional
-ANYMAIL = {
-  "SENDGRID_API_KEY": env("SENDGRID_API_KEY", default="")
-}
-EMAIL_BACKEND = "anymail.backends.sendgrid.EmailBackend" if ANYMAIL["SENDGRID_API_KEY"] else "django.core.mail.backends.console.EmailBackend"
-DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="no-reply@heegan-tech.com")
+# # Email (Anymail/SendGrid) — optional
+# ANYMAIL = {
+#   "SENDGRID_API_KEY": env("SENDGRID_API_KEY", default="")
+# }
+# EMAIL_BACKEND = "anymail.backends.sendgrid.EmailBackend" if ANYMAIL["SENDGRID_API_KEY"] else "django.core.mail.backends.console.EmailBackend"
+# DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="no-reply@heegan-tech.com")
+
+# Email tijaabo (bilaash)
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+DEFAULT_FROM_EMAIL = "spondias81@gmailcom"
+
 
 # File storage (S3 optional)
 # USE_S3 = env.bool("USE_S3", default=False)

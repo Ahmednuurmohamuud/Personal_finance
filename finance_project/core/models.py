@@ -100,7 +100,9 @@ class Account(SoftDeleteModel):
     class Meta:
         indexes = [models.Index(fields=["user","type"])]
 
-    def _str_(self): return f"{self.name} ({self.type})"
+    def __str__(self):
+      return f"{self.name} ({self.type})"
+
 
 # ----- Recurring Bills (declared before Transaction for FK) -----
 class RecurringBill(SoftDeleteModel):

@@ -17,7 +17,14 @@ from .permissions import IsOwner
 from .signals import create_audit
 from .tasks import send_email_notification_task, generate_due_recurring_transactions_task
 from django.conf import settings
+from django.contrib.auth.tokens import PasswordResetTokenGenerator
+from django.contrib.auth import get_user_model
+from django.core.mail import send_mail
 
+
+
+User = get_user_model()
+token_generator = PasswordResetTokenGenerator()
 
 
 # -------- Auth endpoints --------
@@ -75,21 +82,62 @@ def verify_email(request):
     return Response({"verified": True})
 
 # -------- Reset password --------
+
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def reset_password(request):
-    # stub: send email
-    return Response({"status":"email_sent"})
+    email = request.data.get("email")
+    if not email:
+        return Response({"error": "Email is required"}, status=400)
+
+    try:
+        user = User.objects.get(email=email)
+    except User.DoesNotExist:
+        return Response({"error": "User not found"}, status=404)
+
+    # Generate token
+    token = token_generator.make_token(user)
+    reset_link = f"http://localhost:3000/reset-password-confirm?uid={user.id}&token={token}"
+
+    # Console email (tijaabo free)
+    send_mail(
+        subject="Reset your password",
+        message=f"Click this link to reset your password: {reset_link}",
+        from_email=None,  # uses DEFAULT_FROM_EMAIL
+        recipient_list=[email],
+        fail_silently=False,
+    )
+
+    return Response({"status": "email_sent"})
+
 
 # -------- Reset password confirm --------
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def reset_password_confirm(request):
-    # stub: change password
-    return Response({"status":"password_changed"})
+    uid = request.data.get("uid")
+    token = request.data.get("token")
+    new_password = request.data.get("password")
+
+    if not uid or not token or not new_password:
+        return Response({"error": "uid, token, and password are required"}, status=400)
+
+    try:
+        user = User.objects.get(id=uid)
+    except User.DoesNotExist:
+        return Response({"error": "User not found"}, status=404)
+
+    if not token_generator.check_token(user, token):
+        return Response({"error": "Invalid or expired token"}, status=400)
+
+    user.set_password(new_password)
+    user.save()
+    return Response({"status": "password_changed"})
 
 
- # 
+
+# -------- Google OAuth --------
+from google.oauth2 import id_token as google_id_token
 @api_view(["POST"]) 
 @permission_classes([permissions.AllowAny])
 def google_oauth(request):
@@ -214,12 +262,31 @@ class BudgetViewSet(OwnedModelViewSet):
 # -------- Notifications --------  Read-only notifications + mark as read.
 class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = NotificationSerializer
+
     def get_queryset(self):
+        # User-ka kaliya wuxuu arki karaa notifications-kiisa
         return Notification.objects.filter(user=self.request.user).order_by("-sent_at")
+
     @action(detail=True, methods=["patch"])
     def mark_read(self, request, pk=None):
-        n = self.get_object(); n.is_read = True; n.save(update_fields=["is_read"])
+        """
+        Calaamadee notification gaar ah sida read
+        URL: /api/notifications/{id}/mark_read/
+        """
+        n = self.get_object()
+        n.is_read = True
+        n.save(update_fields=["is_read"])
         return Response({"is_read": True})
+
+    @action(detail=False, methods=["post"])
+    def mark_all_read(self, request):
+        """
+        Calaamadee dhamaan notifications user-ka sida read
+        URL: /api/notifications/mark_all_read/
+        """
+        qs = Notification.objects.filter(user=request.user, is_read=False)
+        qs.update(is_read=True)
+        return Response({"marked": qs.count()})
 
 # -------- Exchange Rates --------  aqris-only + get rate for given date.
 class ExchangeRateViewSet(viewsets.ReadOnlyModelViewSet):
