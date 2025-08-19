@@ -10,4 +10,4 @@ python manage.py migrate --noinput
 python manage.py create_currencies
 
 # Ururi static files
-python manage.py collectstatic --noinput
+# python manage.py collectstatic --noinput
