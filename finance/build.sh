@@ -1,13 +1,19 @@
 #!/bin/bash
+# Stop on first error
+set -e
 
-# Rakib dependencies
+# 1. Ku rakib dependencies
+echo "Installing Python dependencies..."
 pip install -r requirements.txt
 
-# Ku dabaq migrations
-python manage.py migrate --noinput
+# 2. Samee migrations
+echo "Applying database migrations..."
+python manage.py migrate
 
-# Abuur currencies
+# 3. Abuuro currencies haddii aysan jirin
+echo "Creating default currencies..."
 python manage.py create_currencies
 
-# Ururi static files
-# python manage.py collectstatic --noinput
+# 4. Start Django server using gunicorn
+echo "Starting Gunicorn server..."
+gunicorn finance_project.wsgi:application --bind 0.0.0.0:8000
