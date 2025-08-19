@@ -1,5 +1,6 @@
 # core/views.py
 from django.shortcuts import render
+from django.db import models
 from rest_framework import viewsets, mixins, permissions, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
