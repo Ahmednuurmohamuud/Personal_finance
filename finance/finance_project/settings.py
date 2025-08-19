@@ -102,10 +102,12 @@ WSGI_APPLICATION = 'finance_project.wsgi.application'
 
 DATABASES = {
     "default": dj_database_url.config(
-        default=env("DATABASE_URL"),  # isticmaal DATABASE_URL oo ka imaanaya .env
+        default=env("DATABASE_URL"),
         conn_max_age=600,
     )
 }
+
+
 # DATABASES = {
 #     'default': {
 #         'ENGINE': 'django.db.backends.postgresql',
