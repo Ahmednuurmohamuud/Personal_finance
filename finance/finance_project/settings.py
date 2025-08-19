@@ -101,7 +101,7 @@ WSGI_APPLICATION = 'finance_project.wsgi.application'
 
 DATABASES = {
     "default": dj_database_url.config(
-        default=env("DATABASE_URL", default=f"postgresql://finance:Raaxo9318@localhost:5432/finance"),
+        default=env("DATABASE_URL"),  # isticmaal DATABASE_URL oo ka imaanaya .env
         conn_max_age=600,
     )
 }
