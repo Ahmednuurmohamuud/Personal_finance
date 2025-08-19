@@ -99,13 +99,20 @@ WSGI_APPLICATION = 'finance_project.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
-
-DATABASES = {
-    "default": dj_database_url.config(
-        default=env("DATABASE_URL"),
-        conn_max_age=600,
-    )
-}
+if DEBUG:
+    DATABASES = {
+        "default": dj_database_url.config(
+            default="postgresql://finance:Raaxo9318@localhost:5432/finance",
+            conn_max_age=600,
+        )
+    }
+else:
+    DATABASES = {
+        "default": dj_database_url.config(
+            default="postgresql://finance:fSSPFZKIW8C67L1GYVRPLOveqDOXvu0W@dpg-d2i5iqu3jp1c7392l4mg-a.frankfurt-postgres.render.com/finance_vkoq",
+            conn_max_age=600,
+        )
+    }
 
 
 # DATABASES = {
