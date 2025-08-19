@@ -9,7 +9,7 @@ https://docs.djangoproject.com/en/5.1/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
-
+import dj_database_url
 from pathlib import Path
 from datetime import timedelta
 import environ, os
@@ -18,9 +18,9 @@ environ.Env.read_env()
 import os
 
 
-SECRET_KEY = env("SECRET_KEY", default="dev-secret")
-DEBUG = env.bool("DEBUG", default=True)
-
+# Environment setup
+env = environ.Env()
+environ.Env.read_env()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -28,13 +28,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-38@$0=k-^rud!zq454*)=8c#+f#n$#806wp28-&qvtx%#5d9yr'
+# Security
+SECRET_KEY = env("SECRET_KEY", default="dev-secret")
+DEBUG = env.bool("DEBUG", default=False)
+ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[".onrender.com"])
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-ALLOWED_HOSTS = []
 
 
 # Application definition
@@ -98,22 +96,22 @@ WSGI_APPLICATION = 'finance_project.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
+DATABASES = {
+    "default": dj_database_url.config(
+        default=env("DATABASE_URL", default=f"postgresql://finance:Raaxo9318@localhost:5432/finance"),
+        conn_max_age=600,
+    )
+}
 # DATABASES = {
 #     'default': {
-#         'ENGINE': 'django.db.backends.sqlite3',
-#         'NAME': BASE_DIR / 'db.sqlite3',
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': 'finance',
+#         'USER': 'finance',
+#         'PASSWORD': 'Raaxo9318',
+#         'HOST': 'localhost',
+#         'PORT': 5432,
 #     }
 # }
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'finance',
-        'USER': 'finance',
-        'PASSWORD': 'Raaxo9318',
-        'HOST': 'localhost',
-        'PORT': 5432,
-    }
-}
 
 
 AUTH_USER_MODEL = "core.User"
