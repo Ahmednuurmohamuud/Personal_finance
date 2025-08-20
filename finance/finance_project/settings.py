@@ -37,10 +37,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = env("SECRET_KEY", default="dev-secret")
 # DEBUG = env.bool("DEBUG", default=False)
 
-ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[".onrender.com"])
+# ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[".onrender.com"])
 
 
-# ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
+ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
 DEBUG = True
 
 
@@ -52,7 +52,8 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
-    # 'django.contrib.staticfiles',
+    'django.contrib.staticfiles',
+    'drf_yasg',
      "rest_framework","django_filters","corsheaders",
     "core",
  # Django REST Framework
