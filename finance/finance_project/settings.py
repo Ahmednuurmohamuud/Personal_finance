@@ -37,10 +37,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = env("SECRET_KEY", default="dev-secret")
 # DEBUG = env.bool("DEBUG", default=False)
 
-ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[".onrender.com"])
+# ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[".onrender.com"])
 
 
-# ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
+ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
 DEBUG = True
 
 
@@ -72,7 +72,7 @@ MIDDLEWARE = [
 
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
+    "http://localhost:5173",
 ]
 
 CORS_ALLOW_ALL_ORIGINS = True
