@@ -51,32 +51,44 @@ class TransactionSplitSerializer(serializers.ModelSerializer):
         model = TransactionSplit
         fields = ("id","transaction","category","amount","created_at")
         read_only_fields = ("id","created_at","transaction")
-
-# ---- Transaction ----
+        
 class TransactionSerializer(serializers.ModelSerializer):
     splits = TransactionSplitSerializer(many=True, required=False)
+
     class Meta:
         model = Transaction
-        fields = ("id","account","target_account","category","type","amount","currency",
-                  "converted_amount","converted_currency","description","transaction_date",
-                  "is_recurring_instance","recurring_bill","splits","is_deleted","created_at","updated_at")
+        fields = (
+            "id","account","target_account","category","type","amount","currency",
+            "converted_amount","converted_currency","description","transaction_date",
+            "is_recurring_instance","recurring_bill","splits","is_deleted","created_at","updated_at"
+        )
         read_only_fields = ("is_deleted","created_at","updated_at")
+
     def validate(self, attrs):
         # restrict currency set
         if attrs.get("currency") and attrs["currency"].code not in settings.ALLOWED_CURRENCIES:
             raise serializers.ValidationError("Unsupported currency.")
+
+        # 🟢 Transfer must have target_account
+        if attrs.get("type") == "Transfer" and not attrs.get("target_account"):
+            raise serializers.ValidationError({"target_account": "Target account is required for transfers."})
+
         return attrs
+
     def create(self, data):
         splits = data.pop("splits", [])
         data["user"] = self.context["request"].user
         tx = super().create(data)
+
         total_splits = sum([s["amount"] for s in splits]) if splits else 0
         if splits:
             if total_splits <= 0 or total_splits > tx.amount:
                 raise serializers.ValidationError("Invalid split total.")
             for s in splits:
                 TransactionSplit.objects.create(transaction=tx, **s)
+
         return tx
+
 
 # ---- Attachment ----
 class AttachmentSerializer(serializers.ModelSerializer):
@@ -96,15 +108,29 @@ class RecurringBillSerializer(serializers.ModelSerializer):
         data["user"] = self.context["request"].user
         return super().create(data)
 
-# ---- Budget ----
+# class BudgetSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = Budget
+#         fields = "__all__"
+#         read_only_fields = ("id", "created_at", "updated_at", "user")  # <--- user read-only
+
+#     def create(self, validated_data):
+#         validated_data["user"] = self.context["request"].user
+#         return super().create(validated_data)
+# serializers.py
 class BudgetSerializer(serializers.ModelSerializer):
     class Meta:
         model = Budget
-        fields = "__all__"  # ✅ sax
-        read_only_fields = ("id","created_at","updated_at")
-    def create(self, data):
-        data["user"] = self.context["request"].user
-        return super().create(data)
+        fields = "__all__"
+        read_only_fields = ("id", "created_at", "updated_at", "user")
+
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user  # Add logged-in user automatically
+        return super().create(validated_data)
+
+
+
+    
 
 # ---- Notification ----
 class NotificationSerializer(serializers.ModelSerializer):

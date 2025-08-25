@@ -1,11 +1,46 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Bell, Search, User, Settings, Archive, LogOut } from "lucide-react";
-
+import api from "../services/api";
+import toast from "react-hot-toast";
 
 function Navbar() {
-  const [mobileOpen, setMobileOpen] = React.useState(false);
-  const [accountOpen, setAccountOpen] = React.useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+
+  // Fetch notifications
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      try {
+        const token = localStorage.getItem("accessToken");
+        if (!token) {
+          toast.error("You are not logged in");
+          return;
+        }
+
+        const res = await api.get("/notifications/", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        setNotifications(res.data.results || []);
+      } catch (err) {
+        console.error("Notification fetch failed:", err);
+        toast.error("Failed to load notifications");
+      }
+    };
+
+    fetchNotifications();
+
+    // Optional: poll every 30s for new notifications
+    const interval = setInterval(fetchNotifications, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const unreadCount = notifications.filter((n) => !n.is_read).length;
 
   return (
     <header className="flex items-center justify-between px-6 md:px-16 lg:px-24 xl:px-32 py-4 border-b border-gray-200 bg-white relative">
@@ -34,11 +69,48 @@ function Navbar() {
         </div>
 
         {/* Notification Bell */}
-        <div className="relative cursor-pointer">
-          <Bell size={20} className="text-gray-700" />
-          <span className="absolute -top-2 -right-2 text-xs text-white bg-indigo-500 w-[18px] h-[18px] flex items-center justify-center rounded-full">
-            3
-          </span>
+        <div className="relative">
+          <button onClick={() => setNotifOpen(!notifOpen)}>
+            <Bell size={20} className="text-gray-700" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-2 -right-2 text-xs text-white bg-indigo-500 w-[18px] h-[18px] flex items-center justify-center rounded-full">
+                {unreadCount}
+              </span>
+            )}
+          </button>
+
+          {notifOpen && (
+            <div className="absolute right-0 mt-2 w-80 bg-white shadow-lg rounded-xl border p-3 z-50">
+              <h3 className="font-semibold mb-2 flex justify-between items-center">
+                Notifications
+                <Link
+                  to="/notifications"
+                  className="text-sm text-indigo-600 hover:underline"
+                >
+                  View all
+                </Link>
+              </h3>
+              <ul className="max-h-60 overflow-y-auto space-y-2">
+                {notifications.length === 0 ? (
+                  <li className="text-gray-500 text-sm">No notifications yet</li>
+                ) : (
+                  notifications.slice(0, 5).map((n) => (
+                    <li
+                      key={n.id}
+                      className={`p-2 rounded-lg ${
+                        n.is_read ? "bg-gray-50" : "bg-blue-50"
+                      }`}
+                    >
+                      <p className="text-sm">{n.message}</p>
+                      <p className="text-xs text-gray-500">
+                        {new Date(n.timestamp).toLocaleString()}
+                      </p>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </div>
+          )}
         </div>
 
         {/* Account Menu */}
@@ -71,7 +143,10 @@ function Navbar() {
                 <Archive className="w-4 h-4" /> Archive Items
               </Link>
               <button
-                onClick={() => alert("Logging out...")}
+                onClick={() => {
+                  localStorage.removeItem("accessToken");
+                  window.location.reload();
+                }}
                 className="flex items-center gap-2 w-full px-3 py-2 rounded-lg hover:bg-red-100 text-red-600"
               >
                 <LogOut className="w-4 h-4" /> Logout
@@ -99,30 +174,6 @@ function Navbar() {
           <rect x="6" y="13" width="15" height="1.5" rx=".75" fill="#426287" />
         </svg>
       </button>
-
-      {/* Mobile Menu */}
-      <div
-        className={`${
-          mobileOpen ? "flex" : "hidden"
-        } absolute top-[60px] left-0 w-full bg-white shadow-md py-4 flex-col items-start gap-3 px-5 text-sm sm:hidden z-40`}
-      >
-        <Link to="/dashboard">Dashboard</Link>
-        <Link to="/transactions">Transactions</Link>
-        <Link to="/accounts">Accounts</Link>
-        <Link to="/budgets">Budgets</Link>
-        <Link to="/recurring">Recurring Bills</Link>
-        <Link to="/reports">Reports</Link>
-
-        {/* Search (mobile) */}
-        <div className="flex items-center w-full border border-gray-300 px-3 rounded-full mt-3">
-          <input
-            className="py-1.5 w-full bg-transparent outline-none placeholder-gray-500 text-sm"
-            type="text"
-            placeholder="Search..."
-          />
-          <Search size={16} className="text-gray-500" />
-        </div>
-      </div>
     </header>
   );
 }

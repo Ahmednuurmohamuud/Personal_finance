@@ -1,7 +1,13 @@
-import React, { useState } from "react";
-import axios from "axios";
+// src/pages/Register.jsx
+import React, { useState, useContext } from "react";
+import { useNavigate } from "react-router-dom";
+import { AuthContext } from "../services/AuthContext";
+
 
 export default function Register() {
+  const { login } = useContext(AuthContext); // mark user register, si toos ah login samee
+  const navigate = useNavigate();
+
   const [form, setForm] = useState({
     username: "",
     email: "",
@@ -20,19 +26,33 @@ export default function Register() {
     setLoading(true);
     setError("");
     setSuccess("");
+
     try {
-      const res = await axios.post("http://localhost:8000/api/users/register/", form);
+      const res = await fetch("http://localhost:8000/api/users/register/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.detail || "Registration failed");
+
       setSuccess("Account created successfully!");
-      console.log(res.data);
+
+      // Auto login user after register
+      localStorage.setItem("accessToken", data.access);
+      localStorage.setItem("refreshToken", data.refresh);
+      login(data.user, data.access); // update AuthContext
+
+      navigate("/dashboard"); // redirect to dashboard
     } catch (err) {
-      setError(err.response?.data?.detail || "Something went wrong");
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
   const handleGoogleSignIn = () => {
-    // Placeholder: Backend Google OAuth endpoint ku wici karo
     alert("Google Sign-In clicked");
   };
 
@@ -49,7 +69,6 @@ export default function Register() {
         {error && <p className="text-red-500 text-sm">{error}</p>}
         {success && <p className="text-green-500 text-sm">{success}</p>}
 
-        {/* Google Sign-In */}
         <button
           type="button"
           onClick={handleGoogleSignIn}

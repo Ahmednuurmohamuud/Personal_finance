@@ -1,22 +1,21 @@
 import React, { useState, useEffect } from "react";
 import { Plus, Eye, Trash2 } from "lucide-react";
-// ensure this points to your api.ts
 import api from "../services/api";
-
 
 export default function Accounts() {
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [openModal, setOpenModal] = useState(null); // "view" | "add"
+  const [openModal, setOpenModal] = useState(null);
   const [selected, setSelected] = useState(null);
 
-  // Fetch accounts from backend
   useEffect(() => {
     const fetchAccounts = async () => {
       try {
         const res = await api.get("/accounts/");
-        setAccounts(res.data);
+        // Haddii response uu pagination leeyahay
+        const data = Array.isArray(res.data) ? res.data : res.data.results || [];
+        setAccounts(data);
       } catch (err) {
         setError("Failed to fetch accounts");
         console.error(err);
@@ -27,7 +26,6 @@ export default function Accounts() {
     fetchAccounts();
   }, []);
 
-  // Delete account
   const handleDelete = async (id) => {
     try {
       await api.delete(`/accounts/${id}/`);
@@ -38,7 +36,6 @@ export default function Accounts() {
     }
   };
 
-  // Add new account
   const handleAdd = async (e) => {
     e.preventDefault();
     const newAcc = {
@@ -86,7 +83,7 @@ export default function Accounts() {
         <div className="bg-white p-4 rounded-lg shadow text-center">
           <p className="text-gray-500">Net Worth</p>
           <h2 className="text-xl font-bold">
-            ${accounts.reduce((a,b)=>a+b.balance,0).toLocaleString()}
+            ${accounts.reduce((a,b)=>a+(b.balance||0),0).toLocaleString()}
           </h2>
         </div>
       </div>
@@ -152,14 +149,15 @@ export default function Accounts() {
                 <form onSubmit={handleAdd} className="flex flex-col gap-3">
                   <input name="name" placeholder="Account Name" className="border px-3 py-2 rounded"/>
                   <input name="balance" type="number" placeholder="Balance" className="border px-3 py-2 rounded"/>
-                  <select name="type" className="border px-3 py-2 rounded">
-                    <option value="Checking">Checking</option>
-                    <option value="Savings">Savings</option>
-                    <option value="Credit Card">Credit Card</option>
-                    <option value="Loan">Loan</option>
-                    <option value="Investment">Investment</option>
-                  </select>
-                  <input name="currency" placeholder="Currency" defaultValue="USD" className="border px-3 py-2 rounded"/>
+                <select name="type" className="border px-3 py-2 rounded">
+                          <option value="Bank">Bank</option>
+                          <option value="Savings">Savings</option>
+                          <option value="Credit Card">Credit Card</option>
+                          <option value="Loan">Loan</option>
+                          <option value="Investment">Investment</option>
+                          <option value="Cash">Cash</option>
+                </select>
+                 <input name="currency" placeholder="Currency" defaultValue="USD" className="border px-3 py-2 rounded"/>
                   <input name="date" type="date" className="border px-3 py-2 rounded"/>
                   <button type="submit" className="bg-indigo-600 text-white py-2 rounded-lg mt-2 hover:bg-indigo-700 transition">Add Account</button>
                 </form>

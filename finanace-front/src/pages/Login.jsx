@@ -1,14 +1,14 @@
-import React, { useState } from "react";
-import axios from "axios";
+// src/pages/Login.jsx
+import React, { useState, useContext } from "react";
+import { useNavigate } from "react-router-dom";
+import { AuthContext } from "../services/AuthContext";
 
 export default function Login() {
-  const [form, setForm] = useState({
-    usernameOrEmail: "",
-    password: "",
-  });
+  const { login } = useContext(AuthContext);
+  const [form, setForm] = useState({ usernameOrEmail: "", password: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const navigate = useNavigate();
 
   const handleChange = (e) =>
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -17,24 +17,14 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     setError("");
-    setSuccess("");
     try {
-      const res = await axios.post("http://localhost:8000/api/users/login/", {
-        username: form.usernameOrEmail,
-        password: form.password,
-      });
-      setSuccess("Login successful!");
-      console.log(res.data); // Halkan waxaad kaydin kartaa token ama user info
+      await login(form.usernameOrEmail, form.password); // call context login
+      navigate("/dashboard"); // redirect after successful login
     } catch (err) {
-      setError(err.response?.data?.detail || "Login failed");
+      setError(err.message || "Login failed");
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleGoogleSignIn = () => {
-    // Placeholder: Halkan backend endpoint Google OAuth wici karo
-    alert("Google Sign-In clicked");
   };
 
   return (
@@ -51,27 +41,6 @@ export default function Login() {
         </p>
 
         {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-        {success && <p className="text-green-500 text-sm text-center">{success}</p>}
-
-        {/* Google Sign-In */}
-        <button
-          type="button"
-          onClick={handleGoogleSignIn}
-          className="w-full mt-4 bg-gray-100 flex items-center justify-center h-12 rounded-full gap-2 hover:bg-gray-200 transition"
-        >
-          <img
-            src="https://raw.githubusercontent.com/prebuiltui/prebuiltui/main/assets/login/googleLogo.svg"
-            alt="googleLogo"
-            className="w-5 h-5"
-          />
-          Sign in with Google
-        </button>
-
-        <div className="flex items-center gap-4 w-full my-5">
-          <div className="w-full h-px bg-gray-300/90"></div>
-          <p className="text-sm text-gray-500/90">or sign in with username/email</p>
-          <div className="w-full h-px bg-gray-300/90"></div>
-        </div>
 
         <input
           type="text"
@@ -91,18 +60,6 @@ export default function Login() {
           required
           className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
-
-        <div className="w-full flex items-center justify-between mt-2 text-gray-500/80">
-          <div className="flex items-center gap-2">
-            <input className="h-5" type="checkbox" id="remember" />
-            <label className="text-sm" htmlFor="remember">
-              Remember me
-            </label>
-          </div>
-          <a className="text-sm underline" href="/forgot-password">
-            Forgot password?
-          </a>
-        </div>
 
         <button
           type="submit"

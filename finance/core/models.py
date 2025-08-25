@@ -31,7 +31,9 @@ class NotificationType(models.TextChoices):
     BUDGET="Budget"; BILL_DUE="Bill Due"; WARNING="Warning"; INSIGHT="Insight"
 
 class AuditAction(models.TextChoices):
-    CREATE="CREATE"; UPDATE="UPDATE"; DELETE="DELETE"
+    CREATE = "CREATE", "Create"
+    UPDATE = "UPDATE", "Update"
+    DELETE = "DELETE", "Delete"
 
 # ----- Soft delete manager -----
 class SoftDeleteQuerySet(models.QuerySet):

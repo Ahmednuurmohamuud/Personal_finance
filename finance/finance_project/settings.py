@@ -79,6 +79,11 @@ CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 
 
+# settings.py
+ALLOWED_CURRENCIES = ["USD", "SOS"]  # Ku dar currencies aad rabto
+
+
+
 WSGI_APPLICATION = "finance_project.wsgi.application"
 ASGI_APPLICATION = "finance_project.asgi.application"
 

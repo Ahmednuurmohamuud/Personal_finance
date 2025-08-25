@@ -11,6 +11,11 @@ from django.utils import timezone
 from google.oauth2 import id_token as google_id_token
 from google.auth.transport import requests as google_requests
 
+from django_filters.rest_framework import DjangoFilterBackend
+from .models import AuditLog
+from .serializers import AuditLogSerializer
+from .filters import AuditLogFilter
+
 from .models import *
 from .serializers import *
 from .filters import *
@@ -308,3 +313,12 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     filterset_class = AuditLogFilter
     def get_queryset(self):
         return AuditLog.objects.filter(user=self.request.user).order_by("-changed_at")
+    
+class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = AuditLogSerializer
+    filterset_class = AuditLogFilter
+    filter_backends = [DjangoFilterBackend]  # enable filter
+
+    def get_queryset(self):
+        queryset = AuditLog.objects.all().order_by("-changed_at")  # show all logs
+        return queryset
