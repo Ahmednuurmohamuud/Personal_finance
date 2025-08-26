@@ -29,6 +29,7 @@ auth_urls = [
     path("users/reset-password/", reset_password),
     path("users/reset-password-confirm/", reset_password_confirm),
     path("users/google-oauth/", google_oauth),
+    path("users/verify-otp/", verify_otp),  # ✅ Add this
 ]
 
 

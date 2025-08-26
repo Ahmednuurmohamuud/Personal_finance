@@ -74,6 +74,11 @@ class User(AbstractUser):
     savings_goal = models.DecimalField(max_digits=15, decimal_places=2, default=0)
     is_verified = models.BooleanField(default=False)
     google_id = models.CharField(max_length=255, null=True, blank=True, unique=True)
+    phone = models.CharField(max_length=20, blank=True, null=True)
+    photo = models.ImageField(upload_to="profile_photos/", blank=True, null=True)
+    two_factor_enabled = models.BooleanField(default=False)
+    otp_code = models.CharField(max_length=6, blank=True, null=True)
+    otp_created_at = models.DateTimeField(blank=True, null=True)
 
     REQUIRED_FIELDS = ["email", "preferred_currency"]
 

@@ -221,9 +221,13 @@ CELERY_TASK_ALWAYS_EAGER = env.bool("CELERY_TASK_ALWAYS_EAGER", default=False)
 # DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="no-reply@heegan-tech.com")
 
 # Email tijaabo (bilaash)
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
-DEFAULT_FROM_EMAIL = "spondias81@gmailcom"
-
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = "xararavic1547@gmail.com"
+EMAIL_HOST_PASSWORD = "oaounkaztlepdmnj"
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 # File storage (S3 optional)
 # USE_S3 = env.bool("USE_S3", default=False)

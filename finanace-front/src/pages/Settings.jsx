@@ -1,57 +1,122 @@
 import React, { useState, useEffect } from "react";
-
-import { AuthContext } from "../services/AuthContext";
-
-
-
-import api from "../services/api"; // Vite/TS si otomaatig ah wuu aqoonsanayaa api.ts
-
+import api from "../services/api";
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState("profile");
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [photo, setPhoto] = useState(null);
+  const [photoFile, setPhotoFile] = useState(null);
+  const [currencies, setCurrencies] = useState([]);
 
-  // Fetch user data
+  // Notifications
+  const [notifEmail, setNotifEmail] = useState(true);
+  const [notifSMS, setNotifSMS] = useState(false);
+
+  // Security
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [twoFactor, setTwoFactor] = useState(false);
+
+  // -------- Fetch user + currencies --------
   useEffect(() => {
-    const fetchUser = async () => {
+    const fetchData = async () => {
       try {
-        const res = await api.get("/users/me/");
-        setUser(res.data);
+        const [userRes, currRes] = await Promise.all([
+          api.get("/users/me/"),
+          api.get("/currencies/")
+        ]);
+
+        setUser(userRes.data);
+        setTwoFactor(userRes.data.two_factor_enabled || false);
+
+        const currencyData = Array.isArray(currRes.data)
+          ? currRes.data
+          : currRes.data.results || [];
+        setCurrencies(currencyData);
+
+        if (userRes.data.photo) setPhoto(userRes.data.photo);
       } catch (err) {
-        console.error("Error fetching user:", err);
+        console.error("Error fetching user/currencies:", err);
       } finally {
         setLoading(false);
       }
     };
-    fetchUser();
+    fetchData();
   }, []);
 
   if (loading) return <p className="p-6">Loading profile...</p>;
   if (!user) return <p className="p-6 text-red-500">No user data found.</p>;
 
-  // Handlers
+  // -------- Handlers --------
   const handlePhotoChange = (e) => {
     if (e.target.files && e.target.files[0]) {
       setPhoto(URL.createObjectURL(e.target.files[0]));
+      setPhotoFile(e.target.files[0]);
     }
   };
 
   const handleProfileSave = async () => {
     try {
-      const payload = {
-        first_name: user.first_name,
-        last_name: user.last_name,
-        email: user.email,
-        phone: user.phone,
-      };
-      const res = await api.patch("/users/me/", payload);
+      const formData = new FormData();
+      formData.append("first_name", user.first_name || "");
+      formData.append("last_name", user.last_name || "");
+      formData.append("email", user.email || "");
+      formData.append("phone", user.phone || "");
+      formData.append("preferred_currency", user.preferred_currency || "USD");
+      formData.append("monthly_income_est", user.monthly_income_est || 0);
+      formData.append("savings_goal", user.savings_goal || 0);
+      if (photoFile) formData.append("photo", photoFile);
+
+      const res = await api.patch("/users/me/", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
       setUser(res.data);
+      setPhoto(res.data.photo);
       alert("Profile updated successfully!");
     } catch (err) {
-      console.error(err);
+      console.error("Update failed:", err.response?.data || err);
       alert("Failed to update profile");
+    }
+  };
+
+  const handlePasswordUpdate = async () => {
+    try {
+      await api.post("/users/change-password/", {
+        current_password: currentPassword,
+        new_password: newPassword,
+      });
+      alert("Password updated!");
+      setCurrentPassword("");
+      setNewPassword("");
+    } catch (err) {
+      console.error("Password change failed:", err.response?.data || err);
+      alert("Failed to update password");
+    }
+  };
+
+  const handleTwoFactorToggle = async () => {
+    try {
+      const res = await api.patch("/users/me/", {
+        two_factor_enabled: !twoFactor,
+      });
+      setTwoFactor(res.data.two_factor_enabled);
+      alert(`2FA ${res.data.two_factor_enabled ? "enabled" : "disabled"}!`);
+    } catch (err) {
+      console.error("2FA toggle failed:", err.response?.data || err);
+      alert("Failed to update 2FA setting");
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!window.confirm("Are you sure you want to delete your account?")) return;
+    try {
+      await api.delete("/users/me/");
+      alert("Account deleted.");
+      // redirect to login or home
+    } catch (err) {
+      console.error("Delete failed:", err.response?.data || err);
+      alert("Failed to delete account");
     }
   };
 
@@ -80,163 +145,189 @@ export default function Settings() {
         ))}
       </div>
 
-      {/* Tab Content */}
-      <div className="bg-white shadow-lg rounded-lg p-6 space-y-6">
-        {/* Profile Tab */}
-        {activeTab === "profile" && (
+      {/* Profile Tab */}
+      {activeTab === "profile" && (
+        <div className="bg-white shadow-lg rounded-lg p-6 space-y-6">
+          <h2 className="text-xl font-bold text-indigo-600 mb-4">Profile Information</h2>
+
+          {/* Photo */}
+          <div className="flex flex-col items-center space-y-2">
+            <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-gray-300">
+              {photo ? (
+                <img src={photo} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full bg-gray-200 flex items-center justify-center text-gray-400">
+                  No Photo
+                </div>
+              )}
+            </div>
+            <label className="cursor-pointer text-blue-600 hover:underline">
+              Change Photo
+              <input
+                type="file"
+                accept="image/png, image/jpeg, image/gif"
+                className="hidden"
+                onChange={handlePhotoChange}
+              />
+            </label>
+            <p className="text-xs text-gray-400">JPG, PNG or GIF. Max size 2MB.</p>
+          </div>
+
+          {/* Name */}
+          <div className="grid md:grid-cols-2 gap-4">
+            <input
+              type="text"
+              value={user.first_name || ""}
+              onChange={(e) => setUser({ ...user, first_name: e.target.value })}
+              placeholder="First Name"
+              className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <input
+              type="text"
+              value={user.last_name || ""}
+              onChange={(e) => setUser({ ...user, last_name: e.target.value })}
+              placeholder="Last Name"
+              className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+
+          {/* Email + Phone */}
+          <div className="grid md:grid-cols-2 gap-4">
+            <input
+              type="email"
+              value={user.email || ""}
+              onChange={(e) => setUser({ ...user, email: e.target.value })}
+              placeholder="Email Address"
+              className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <input
+              type="tel"
+              value={user.phone || ""}
+              onChange={(e) => setUser({ ...user, phone: e.target.value })}
+              placeholder="Phone Number"
+              className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+
+          {/* Currency + Income + Savings */}
+          <div className="grid md:grid-cols-3 gap-4">
+            <select
+              value={user.preferred_currency || "USD"}
+              onChange={(e) => setUser({ ...user, preferred_currency: e.target.value })}
+              className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              {currencies.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.code} - {c.name}
+                </option>
+              ))}
+            </select>
+            <input
+              type="number"
+              step="0.01"
+              value={user.monthly_income_est || ""}
+              onChange={(e) => setUser({ ...user, monthly_income_est: e.target.value })}
+              placeholder="Monthly Income Estimate"
+              className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <input
+              type="number"
+              step="0.01"
+              value={user.savings_goal || ""}
+              onChange={(e) => setUser({ ...user, savings_goal: e.target.value })}
+              placeholder="Savings Goal"
+              className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+
+          <button
+            onClick={handleProfileSave}
+            className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition"
+          >
+            Save Changes
+          </button>
+        </div>
+      )}
+
+      {/* Security Tab */}
+      {activeTab === "security" && (
+        <div className="bg-white shadow-lg rounded-lg p-6 space-y-6">
+          <h2 className="text-xl font-bold text-indigo-600 mb-4">Security</h2>
+
+          {/* Password */}
           <div className="space-y-4">
-            <h2 className="text-xl font-bold text-indigo-600 mb-4">Profile Information</h2>
-
-            <div className="flex flex-col items-center space-y-2">
-              <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-gray-300">
-                {photo ? (
-                  <img src={photo} alt="Profile" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full bg-gray-200 flex items-center justify-center text-gray-400">
-                    No Photo
-                  </div>
-                )}
-              </div>
-              <label className="cursor-pointer text-blue-600 hover:underline">
-                Change Photo
-                <input
-                  type="file"
-                  accept="image/png, image/jpeg, image/gif"
-                  className="hidden"
-                  onChange={handlePhotoChange}
-                />
-              </label>
-              <p className="text-xs text-gray-400">JPG, PNG or GIF. Max size 2MB.</p>
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-4">
-              <input
-                type="text"
-                value={user.first_name || ""}
-                onChange={(e) => setUser({ ...user, first_name: e.target.value })}
-                placeholder="First Name"
-                className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-              <input
-                type="text"
-                value={user.last_name || ""}
-                onChange={(e) => setUser({ ...user, last_name: e.target.value })}
-                placeholder="Last Name"
-                className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-4">
-              <input
-                type="email"
-                value={user.email || ""}
-                onChange={(e) => setUser({ ...user, email: e.target.value })}
-                placeholder="Email Address"
-                className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-              <input
-                type="tel"
-                value={user.phone || ""}
-                onChange={(e) => setUser({ ...user, phone: e.target.value })}
-                placeholder="Phone Number"
-                className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-
+            <input
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              placeholder="Current Password"
+              className="border px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-indigo-500"
+            />
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="New Password"
+              className="border px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-indigo-500"
+            />
             <button
-              onClick={handleProfileSave}
+              onClick={handlePasswordUpdate}
               className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition"
             >
-              Save Changes
+              Update Password
             </button>
           </div>
-        )}
 
-        {/* Security Tab */}
-        {activeTab === "security" && (
-          <div className="space-y-6">
-            <h2 className="text-xl font-bold text-indigo-600">Security Settings</h2>
-            <p>Your account is protected by Google's secure authentication.</p>
-            <div className="space-y-2">
-              <label className="block font-medium">Change Password</label>
-              <input type="password" placeholder="Current Password" className="border px-3 py-2 rounded-lg w-full"/>
-              <input type="password" placeholder="New Password" className="border px-3 py-2 rounded-lg w-full"/>
-              <input type="password" placeholder="Confirm New Password" className="border px-3 py-2 rounded-lg w-full"/>
-              <button className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
-                Update Password
-              </button>
-            </div>
-            <div className="space-y-2 mt-4">
-              <h3 className="font-medium">Two-Factor Authentication</h3>
-              <p>Add an extra layer of security to your account</p>
-              <button className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition">
-                Enable 2FA
-              </button>
-            </div>
+          {/* Two-Factor Authentication */}
+          <div className="flex items-center gap-2 mt-4">
+            <input
+              type="checkbox"
+              checked={twoFactor}
+              onChange={handleTwoFactorToggle}
+            />
+            <span>Enable Two-Factor Authentication (2FA)</span>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Notifications Tab */}
-        {activeTab === "notifications" && (
-          <div className="space-y-4">
-            <h2 className="text-xl font-bold text-indigo-600">Notification Settings</h2>
-            <div className="space-y-2">
-              <h3 className="font-medium">Alert Types</h3>
-              <label className="flex items-center gap-2">
-                <input type="checkbox"/> Budget Alerts
-              </label>
-              <label className="flex items-center gap-2">
-                <input type="checkbox"/> Bill Reminders
-              </label>
-              <label className="flex items-center gap-2">
-                <input type="checkbox"/> Financial Tips
-              </label>
-            </div>
-            <div className="space-y-2">
-              <h3 className="font-medium">Delivery Methods</h3>
-              <label className="flex items-center gap-2">
-                <input type="checkbox"/> Email Notifications
-              </label>
-              <label className="flex items-center gap-2">
-                <input type="checkbox"/> Push Notifications
-              </label>
-            </div>
-            <button className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition">
-              Save Notification Settings
-            </button>
+      {/* Notifications Tab */}
+      {activeTab === "notifications" && (
+        <div className="bg-white shadow-lg rounded-lg p-6 space-y-6">
+          <h2 className="text-xl font-bold text-indigo-600 mb-4">Notifications</h2>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={notifEmail}
+              onChange={() => setNotifEmail(!notifEmail)}
+            />
+            <span>Email Notifications</span>
           </div>
-        )}
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={notifSMS}
+              onChange={() => setNotifSMS(!notifSMS)}
+            />
+            <span>SMS Notifications</span>
+          </div>
+        </div>
+      )}
 
-        {/* Data & Privacy Tab */}
-        {activeTab === "privacy" && (
-          <div className="space-y-4">
-            <h2 className="text-xl font-bold text-indigo-600">Data & Privacy</h2>
-            <div className="space-y-2">
-              <h3 className="font-medium">Export Your Data</h3>
-              <p>Download a copy of all your financial data</p>
-              <button className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
-                Download Data Export
-              </button>
-            </div>
-            <div className="space-y-2 mt-4">
-              <h3 className="font-medium">Data Retention</h3>
-              <p>Control how long your data is stored</p>
-              <select className="border px-3 py-2 rounded-lg">
-                <option>Keep indefinitely</option>
-                <option>Delete after 1 year</option>
-                <option>Delete after 5 years</option>
-              </select>
-            </div>
-            <div className="space-y-2 mt-4">
-              <h3 className="font-medium text-red-600">Delete Account</h3>
-              <p>Permanently delete your account and all associated data. This action cannot be undone.</p>
-              <button className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition">
-                Delete Account
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Data & Privacy Tab */}
+      {activeTab === "privacy" && (
+        <div className="bg-white shadow-lg rounded-lg p-6 space-y-6">
+          <h2 className="text-xl font-bold text-red-600 mb-4">Data & Privacy</h2>
+          <p className="text-gray-600">
+            You can download or delete your account data at any time.
+          </p>
+          <button
+            onClick={handleDeleteAccount}
+            className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition"
+          >
+            Delete My Account
+          </button>
+        </div>
+      )}
     </div>
   );
 }

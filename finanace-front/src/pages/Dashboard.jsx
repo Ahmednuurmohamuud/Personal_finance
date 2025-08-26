@@ -1,4 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useContext } from "react";
+import { AuthContext } from "../services/AuthContext";
+import toast, { Toaster } from "react-hot-toast";
 import api from "../services/api";
 import {
   LineChart,
@@ -18,12 +20,28 @@ import {
 
 const COLORS = ["#3B82F6", "#22C55E", "#FACC15", "#F97316", "#A855F7", "#EF4444"];
 
+
 export default function Dashboard() {
+  const { user } = useContext(AuthContext); // hel user
   const [transactions, setTransactions] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [budgets, setBudgets] = useState([]);
   const [loading, setLoading] = useState(true);
+ const [showToast, setShowToast] = useState(true);
+
+
+  // Toast welcome once, 3 seconds duration
+  useEffect(() => {
+    if (user && showToast) {
+      toast.success(`Welcome back, ${user.username}!`, {
+        duration: 2000, // 3 seconds
+        position: "top-right",
+      });
+      setShowToast(false);
+    }
+  }, [user, showToast]);
+
 
   useEffect(() => {
     const fetchData = async () => {
@@ -90,6 +108,9 @@ export default function Dashboard() {
 
   return (
     <div className="p-6 space-y-8 bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
+       <Toaster />
+
+
       {/* Top Row */}
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Income vs Expenses */}

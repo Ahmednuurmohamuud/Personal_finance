@@ -19,6 +19,8 @@ import Register from "./pages/Register";
 import Settings from "./pages/Settings";
 import Notifications from "./pages/notification";
 
+import ResetPassword from "./pages/ResetPassword";
+
 import './index.css'; // Tailwind CSS
 import './App.css';   // Custom styles
 
@@ -91,7 +93,10 @@ function App() {
                   </PrivateRoute>
                 }
               />
-              {/* <Route path="/reports" element={<Reports />} /> */}
+              <Route path="/reset-password" element={<ResetPassword />} />
+              {/* Notifications and Settings */}
+            
+             
                 
               <Route
                 path="/notifications"

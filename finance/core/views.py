@@ -10,6 +10,8 @@ from django.db.models import Q
 from django.utils import timezone
 from google.oauth2 import id_token as google_id_token
 from google.auth.transport import requests as google_requests
+from django.contrib.auth import authenticate
+from datetime import timedelta
 
 from django_filters.rest_framework import DjangoFilterBackend
 from .models import AuditLog
@@ -26,11 +28,128 @@ from django.conf import settings
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.contrib.auth import get_user_model
 from django.core.mail import send_mail
+import random
 
 
 
 User = get_user_model()
 token_generator = PasswordResetTokenGenerator()
+
+
+
+
+# =========================
+# ----- OTP Helpers -------
+# =========================
+def generate_otp(user):
+    otp = f"{random.randint(100000, 999999)}"  # 6-digit OTP
+    user.otp_code = otp
+    user.otp_created_at = timezone.now()
+    user.save(update_fields=["otp_code", "otp_created_at"])
+    return otp
+
+
+def send_otp_email(user):
+    otp = generate_otp(user)
+    send_mail(
+        subject="Your OTP Code",
+        message=f"Your login OTP code is: {otp}",
+        from_email=None,  # uses DEFAULT_FROM_EMAIL in settings.py
+        recipient_list=[user.email],
+        fail_silently=False,
+    )
+
+
+# =========================
+# ----- Login View --------
+# =========================
+@api_view(["POST"])
+@permission_classes([permissions.AllowAny])
+def login(request):
+    username_or_email = request.data.get("username")
+    password = request.data.get("password")
+
+    if not username_or_email or not password:
+        return Response({"detail": "Username/email and password required"}, status=400)
+
+    # Allow login by either username OR email
+    try:
+        user_obj = User.objects.get(Q(username=username_or_email) | Q(email=username_or_email))
+        username = user_obj.username
+    except User.DoesNotExist:
+        return Response({"detail": "Invalid credentials"}, status=400)
+
+    user = authenticate(username=username, password=password)
+    if not user:
+        return Response({"detail": "Invalid credentials"}, status=400)
+
+    # If user has 2FA enabled → send OTP
+    if getattr(user, "two_factor_enabled", False):
+        send_otp_email(user)
+        return Response({
+            "otp_required": True,
+            "user_id": str(user.id),
+            "message": "OTP sent to your email"
+        })
+
+    # Normal login flow
+    if not user.last_login:
+        welcome_message = f"Welcome {user.username}"
+    else:
+        welcome_message = f"Welcome back {user.username}"
+
+    user.last_login = timezone.now()
+    user.save(update_fields=["last_login"])
+
+    refresh = RefreshToken.for_user(user)
+
+    return Response({
+        "otp_required": False,
+        "access": str(refresh.access_token),
+        "refresh": str(refresh),
+        "message": welcome_message
+    })
+
+
+# =========================
+# ----- OTP Verify --------
+# =========================
+OTP_VALID_MINUTES = 5
+
+@api_view(["POST"])
+@permission_classes([permissions.AllowAny])
+def verify_otp(request):
+    user_id = request.data.get("user_id")
+    otp = request.data.get("otp")
+
+    if not user_id or not otp:
+        return Response({"detail": "user_id and otp are required"}, status=400)
+
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return Response({"detail": "User not found"}, status=404)
+
+    # OTP check
+    if not user.otp_code or user.otp_code != otp:
+        return Response({"detail": "Invalid OTP"}, status=400)
+
+    # Expiration check
+    if timezone.now() > user.otp_created_at + timedelta(minutes=OTP_VALID_MINUTES):
+        return Response({"detail": "OTP expired"}, status=400)
+
+    # OTP valid → clear OTP and return JWT
+    user.otp_code = None
+    user.otp_created_at = None
+    user.save(update_fields=["otp_code", "otp_created_at"])
+
+    refresh = RefreshToken.for_user(user)
+
+    return Response({
+        "access": str(refresh.access_token),
+        "refresh": str(refresh),
+        "message": f"Welcome {user.username}"
+    })
 
 
 # -------- Auth endpoints --------
@@ -43,15 +162,7 @@ def register(request):
     refresh = RefreshToken.for_user(user)
     return Response({"user": UserSerializer(user).data, "access": str(refresh.access_token), "refresh": str(refresh)})
 
-# -------- Login endpoint --------
-@api_view(["POST"])
-@permission_classes([permissions.AllowAny])
-def login(request):
-    from django.contrib.auth import authenticate
-    user = authenticate(username=request.data.get("username"), password=request.data.get("password"))
-    if not user: return Response({"detail":"Invalid credentials"}, status=400)
-    refresh = RefreshToken.for_user(user)
-    return Response({"access": str(refresh.access_token), "refresh": str(refresh)})
+
 
 # -------- Logout endpoint --------
 @api_view(["POST"])
@@ -265,6 +376,7 @@ class BudgetViewSet(OwnedModelViewSet):
     serializer_class = BudgetSerializer
     filterset_class = BudgetFilter
 
+
 # -------- Notifications --------  Read-only notifications + mark as read.
 class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = NotificationSerializer
@@ -291,8 +403,18 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
         URL: /api/notifications/mark_all_read/
         """
         qs = Notification.objects.filter(user=request.user, is_read=False)
+        count = qs.count()
         qs.update(is_read=True)
-        return Response({"marked": qs.count()})
+        return Response({"marked": count})
+
+    @action(detail=False, methods=["get"])
+    def unread_count(self, request):
+        """
+        Tirada notifications-ka aan la aqrin
+        URL: /api/notifications/unread_count/
+        """
+        count = Notification.objects.filter(user=request.user, is_read=False).count()
+        return Response({"unread": count})
 
 # -------- Exchange Rates --------  aqris-only + get rate for given date.
 class ExchangeRateViewSet(viewsets.ReadOnlyModelViewSet):

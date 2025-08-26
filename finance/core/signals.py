@@ -3,6 +3,34 @@ from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from .models import Transaction, Account, Category, Budget, RecurringBill
 from .audit import create_audit
+from django.dispatch import receiver
+from .models import Notification
+# from Transaction.models import Transaction   # model-kaaga transaction
+from django.contrib.auth import get_user_model
+
+
+
+
+User = get_user_model()
+
+@receiver(post_save, sender=Transaction)
+def create_transaction_notification(sender, instance, created, **kwargs):
+    if created:
+        # Abuur notification cusub
+        Notification.objects.create(
+            user=instance.user,  # Halkan bedel 'recipient' → 'user'
+            type="TRANSACTION",  # ama NotificationType.choices value u dhigma
+            message=f"Transaction cusub ayaa lagu daray: {instance.amount} {instance.currency}"
+        )
+
+
+
+
+
+
+
+
+
 
 # ----------------- TRANSACTIONS -----------------
 @receiver(post_save, sender=Transaction)
