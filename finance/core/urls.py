@@ -25,11 +25,16 @@ auth_urls = [
     path("users/login/", login),
     path("users/logout/", logout),
     path("users/me/", me),   #  ANIGA
-    path("users/verify-email/", verify_email),
     path("users/reset-password/", reset_password),
     path("users/reset-password-confirm/", reset_password_confirm),
     path("users/google-oauth/", google_oauth),
     path("users/verify-otp/", verify_otp),  # ✅ Add this
+    path("users/resend_verification/", resend_verification),  # ✅ Add this
+    path("users/verify_email/", verify_email),  # ✅ Add this
+    path("users/resend-otp/", resend_otp)
+    
+
+
 ]
 
 

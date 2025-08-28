@@ -29,6 +29,12 @@ from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.contrib.auth import get_user_model
 from django.core.mail import send_mail
 import random
+from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
+from django.core.mail import send_mail
+from django.urls import reverse
+
+signer = TimestampSigner()  # token generator for email verification
+EMAIL_TOKEN_MAX_AGE = 60 * 60 * 24  # 24 hours validity
 
 
 
@@ -42,11 +48,9 @@ token_generator = PasswordResetTokenGenerator()
 # ----- OTP Helpers -------
 # =========================
 def generate_otp(user):
-    otp = f"{random.randint(100000, 999999)}"  # 6-digit OTP
-    user.otp_code = otp
-    user.otp_created_at = timezone.now()
-    user.save(update_fields=["otp_code", "otp_created_at"])
-    return otp
+    otp_code = f"{random.randint(100000, 999999)}"
+    OTP.objects.create(user=user, code=otp_code)
+    return otp_code
 
 
 def send_otp_email(user):
@@ -54,11 +58,10 @@ def send_otp_email(user):
     send_mail(
         subject="Your OTP Code",
         message=f"Your login OTP code is: {otp}",
-        from_email=None,  # uses DEFAULT_FROM_EMAIL in settings.py
+        from_email=None,
         recipient_list=[user.email],
         fail_silently=False,
     )
-
 
 # =========================
 # ----- Login View --------
@@ -72,18 +75,22 @@ def login(request):
     if not username_or_email or not password:
         return Response({"detail": "Username/email and password required"}, status=400)
 
-    # Allow login by either username OR email
+    # -------- Step 1: Hubi user jiritaanka --------
     try:
         user_obj = User.objects.get(Q(username=username_or_email) | Q(email=username_or_email))
-        username = user_obj.username
     except User.DoesNotExist:
-        return Response({"detail": "Invalid credentials"}, status=400)
+        return Response({"detail": "Username or email is incorrect"}, status=400)
 
-    user = authenticate(username=username, password=password)
+    # -------- Step 2: Hubi password saxnaanta --------
+    if not user_obj.check_password(password):
+        return Response({"detail": "Password is incorrect"}, status=400)
+
+    # -------- Step 3: Authenticate user --------
+    user = authenticate(username=user_obj.username, password=password)
     if not user:
-        return Response({"detail": "Invalid credentials"}, status=400)
+        return Response({"detail": "Authentication failed"}, status=400)
 
-    # If user has 2FA enabled → send OTP
+    # -------- Step 4: Haddii 2FA enabled, OTP dir --------
     if getattr(user, "two_factor_enabled", False):
         send_otp_email(user)
         return Response({
@@ -92,29 +99,22 @@ def login(request):
             "message": "OTP sent to your email"
         })
 
-    # Normal login flow
-    if not user.last_login:
-        welcome_message = f"Welcome {user.username}"
-    else:
-        welcome_message = f"Welcome back {user.username}"
-
+    # -------- Step 5: Normal login --------
     user.last_login = timezone.now()
     user.save(update_fields=["last_login"])
-
     refresh = RefreshToken.for_user(user)
-
     return Response({
         "otp_required": False,
         "access": str(refresh.access_token),
         "refresh": str(refresh),
-        "message": welcome_message
+        "message": f"Welcome {user.username}"
     })
+
 
 
 # =========================
 # ----- OTP Verify --------
-# =========================
-OTP_VALID_MINUTES = 5
+OTP_VALID_MINUTES = 30
 
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
@@ -130,21 +130,19 @@ def verify_otp(request):
     except User.DoesNotExist:
         return Response({"detail": "User not found"}, status=404)
 
-    # OTP check
-    if not user.otp_code or user.otp_code != otp:
+    try:
+        otp_obj = OTP.objects.filter(user=user, code=otp, is_used=False).latest("created_at")
+    except OTP.DoesNotExist:
         return Response({"detail": "Invalid OTP"}, status=400)
 
-    # Expiration check
-    if timezone.now() > user.otp_created_at + timedelta(minutes=OTP_VALID_MINUTES):
-        return Response({"detail": "OTP expired"}, status=400)
+    if not otp_obj.is_valid(OTP_VALID_MINUTES):
+        return Response({"detail": "OTP expired or already used"}, status=400)
 
-    # OTP valid → clear OTP and return JWT
-    user.otp_code = None
-    user.otp_created_at = None
-    user.save(update_fields=["otp_code", "otp_created_at"])
+    # Mark as used
+    otp_obj.is_used = True
+    otp_obj.save(update_fields=["is_used"])
 
     refresh = RefreshToken.for_user(user)
-
     return Response({
         "access": str(refresh.access_token),
         "refresh": str(refresh),
@@ -152,15 +150,135 @@ def verify_otp(request):
     })
 
 
+@api_view(["POST"])
+@permission_classes([permissions.AllowAny])
+def resend_otp(request):
+    user_id = request.data.get("user_id")
+    if not user_id:
+        return Response({"detail": "user_id required"}, status=400)
+    try:
+        user = User.objects.get(id=user_id)
+        send_otp_email(user)
+        return Response({"detail": "OTP resent"})
+    except User.DoesNotExist:
+        return Response({"detail": "User not found"}, status=404)
+
 # -------- Auth endpoints --------
+
+
+# -------- Send verification email --------
+def send_verification_email(user):
+    token = signer.sign(user.id)  # create signed token
+    verification_link = f"http://localhost:5173/verify-email?token={token}"
+    send_mail(
+        subject="Verify your email",
+        message=f"Click this link to verify your email: {verification_link}",
+        from_email=None,  # uses DEFAULT_FROM_EMAIL
+        recipient_list=[user.email],
+        fail_silently=False,
+    )
+
+@api_view(["POST"])
+@permission_classes([permissions.AllowAny])
+def resend_verification(request):
+    user_id = request.data.get("user_id")
+    if not user_id:
+        return Response({"detail": "user_id is required"}, status=400)
+    try:
+        user = User.objects.get(id=user_id)
+        # TODO: send verification email
+        send_verification_email(user)
+        return Response({"detail": "Verification email sent"})
+    except User.DoesNotExist:
+        return Response({"detail": "User not found"}, status=404)
+
+# -------- Register endpoint --------
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def register(request):
-    ser = RegisterSerializer(data=request.data, context={"request":request})
+    ser = RegisterSerializer(data=request.data, context={"request": request})
     ser.is_valid(raise_exception=True)
     user = ser.save()
+    user.is_verified = False
+    user.save(update_fields=["is_verified"])
+
+    # Send verification email
+    send_verification_email(user)
+
     refresh = RefreshToken.for_user(user)
-    return Response({"user": UserSerializer(user).data, "access": str(refresh.access_token), "refresh": str(refresh)})
+    return Response({
+        "user": UserSerializer(user).data,
+        "access": str(refresh.access_token),
+        "refresh": str(refresh),
+        "email_verified": user.is_verified,
+        "message": "Please verify your email before using the account. Verification link sent."
+    })
+
+# -------- Google OAuth endpoint --------
+@api_view(["POST"]) 
+@permission_classes([permissions.AllowAny])
+def google_oauth(request):
+    token = request.data.get("id_token")
+    client_id = request.data.get("client_id")
+    if not token or not client_id:
+        return Response({"detail":"id_token and client_id required"}, status=400)
+
+    try:
+        info = google_id_token.verify_oauth2_token(
+            token, google_requests.Request(), client_id
+        )
+        email = info["email"]
+        gid = info["sub"]
+
+        user, created = User.objects.get_or_create(
+            email=email,
+            defaults={
+                "username": email.split("@")[0],
+                "google_id": gid,
+                "preferred_currency": Currency.objects.get(code="USD"),
+                "is_verified": False,  # always start as unverified
+            }
+        )
+
+        if not user.google_id:
+            user.google_id = gid
+            user.save(update_fields=["google_id"])
+
+        # If newly created or not verified, send email verification
+        if created or not user.is_verified:
+            send_verification_email(user)
+
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "user": UserSerializer(user).data,
+            "email_verified": user.is_verified,
+            "message": "Please verify your email before using the account. Verification link sent."
+        })
+
+    except Exception as e:
+        return Response({"detail": str(e)}, status=400)
+
+# -------- Verify email endpoint --------
+@api_view(["POST"])
+@permission_classes([permissions.AllowAny])
+def verify_email(request):
+    token = request.data.get("token")
+    if not token:
+        return Response({"error": "Token is required"}, status=400)
+
+    try:
+        user_id = signer.unsign(token, max_age=EMAIL_TOKEN_MAX_AGE)
+        user = User.objects.get(id=user_id)
+        user.is_verified = True
+        user.save(update_fields=["is_verified"])
+        return Response({"verified": True, "message": "Email verified successfully"})
+    except SignatureExpired:
+        return Response({"error": "Token expired"}, status=400)
+    except (BadSignature, User.DoesNotExist):
+        return Response({"error": "Invalid token"}, status=400)
+
 
 
 
@@ -189,14 +307,7 @@ def me(request):
         return Response(status=204)
     
 
-# -------- Verify email --------
-@api_view(["POST"])
-@permission_classes([permissions.AllowAny])
-def verify_email(request):
-    # stub: in production you’d verify token sent by email
-    request.user.is_verified = True
-    request.user.save(update_fields=["is_verified"])
-    return Response({"verified": True})
+
 
 # -------- Reset password --------
 
@@ -214,7 +325,7 @@ def reset_password(request):
 
     # Generate token
     token = token_generator.make_token(user)
-    reset_link = f"http://localhost:3000/reset-password-confirm?uid={user.id}&token={token}"
+    reset_link = f"http://localhost:5173/reset-password-confirm?uid={user.id}&token={token}"
 
     # Console email (tijaabo free)
     send_mail(
@@ -252,42 +363,6 @@ def reset_password_confirm(request):
     return Response({"status": "password_changed"})
 
 
-@api_view(["POST"]) 
-@permission_classes([permissions.AllowAny])
-def google_oauth(request):
-    token = request.data.get("id_token")
-    client_id = request.data.get("client_id")
-    if not token or not client_id:
-        return Response({"detail":"id_token and client_id required"}, status=400)
-
-    try:
-        info = google_id_token.verify_oauth2_token(
-            token, google_requests.Request(), client_id
-        )
-        email = info["email"]
-        gid = info["sub"]
-
-        user, _ = User.objects.get_or_create(
-            email=email,
-            defaults={
-                "username": email.split("@")[0],
-                "google_id": gid,
-                "preferred_currency": Currency.objects.get(code="USD"),
-            }
-        )
-        if not user.google_id:
-            user.google_id = gid
-            user.save(update_fields=["google_id"])
-
-        refresh = RefreshToken.for_user(user)
-        return Response({
-            "access": str(refresh.access_token),
-            "refresh": str(refresh),
-            "user": UserSerializer(user).data
-        })
-
-    except Exception as e:
-        return Response({"detail": str(e)}, status=400)
 
 # -------- Base class for owned objects with soft delete --------
 class OwnedModelViewSet(viewsets.ModelViewSet):

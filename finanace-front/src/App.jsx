@@ -8,6 +8,8 @@ import Transactions from "./pages/Transactions";
 import Accounts from "./pages/Accounts";
 import Home from "./pages/Home";  
 
+import VerifyEmail from "./pages/VerifyEmail";
+
 
 import Budgets from "./pages/Budgets";  
 import Bills from "./pages/Bills";
@@ -20,6 +22,8 @@ import Settings from "./pages/Settings";
 import Notifications from "./pages/notification";
 
 import ResetPassword from "./pages/ResetPassword";
+import ResetPasswordConfirm from "./pages/ResetPasswordConfirm";
+
 
 import './index.css'; // Tailwind CSS
 import './App.css';   // Custom styles
@@ -94,6 +98,8 @@ function App() {
                 }
               />
               <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/verify-email" element={<VerifyEmail />} />
+              <Route path="/reset-password-confirm" element={<ResetPasswordConfirm />} />
               {/* Notifications and Settings */}
             
              

@@ -20,10 +20,16 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = (
-            "id","username","email","first_name","last_name","phone",
-            "preferred_currency","monthly_income_est","savings_goal",
-            "photo","is_active","is_verified","date_joined","two_factor_enabled","otp_code","otp_created_at"
+            "id", "username", "email", "first_name", "last_name", "phone",
+            "preferred_currency", "monthly_income_est", "savings_goal",
+            "photo", "is_active", "is_verified", "date_joined", "two_factor_enabled"
         )
+
+class OTPSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OTP
+        fields = ["id", "user", "code", "is_used", "created_at"]
+
 
 # ---- Currency ----
 class CurrencySerializer(serializers.ModelSerializer):

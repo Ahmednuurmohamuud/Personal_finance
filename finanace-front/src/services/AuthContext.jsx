@@ -1,7 +1,9 @@
 // src/services/AuthContext.jsx
 import React, { createContext, useState, useEffect } from "react";
-const GOOGLE_CLIENT_ID = "379616936425-u0q0jabn6172fk3oft9bbc11th2fdt34.apps.googleusercontent.com";
 import api from "./api";
+import toast from "react-hot-toast";
+
+const GOOGLE_CLIENT_ID = "379616936425-u0q0jabn6172fk3oft9bbc11th2fdt34.apps.googleusercontent.com";
 
 export const AuthContext = createContext();
 
@@ -11,6 +13,7 @@ export function AuthProvider({ children }) {
   const [error, setError] = useState(null);
   const [otpPending, setOtpPending] = useState(null);
 
+  // ---------- Fetch current user ----------
   useEffect(() => {
     const fetchUser = async () => {
       const token = localStorage.getItem("accessToken");
@@ -29,14 +32,11 @@ export function AuthProvider({ children }) {
     fetchUser();
   }, []);
 
-  // Login (username/password)
+  // ---------- Normal login ----------
   const login = async (usernameOrEmail, password) => {
     try {
       setError(null);
-      const res = await api.post("/users/login/", {
-        username: usernameOrEmail,
-        password,
-      });
+      const res = await api.post("/users/login/", { username: usernameOrEmail, password });
 
       if (res.data.otp_required) {
         setOtpPending({ user_id: res.data.user_id });
@@ -48,25 +48,12 @@ export function AuthProvider({ children }) {
         return { otp_required: false, message: res.data.message };
       }
     } catch (err) {
-      setError(err.response?.data?.detail || "Login failed");
+      setError(err.response?.data?.detail || err.message || "Login failed");
       throw err;
     }
   };
 
-  // ✅ Google Login
-// Google login
-const loginWithGoogle = async (id_token) => {
-  const res = await api.post("/users/google-oauth/", { 
-    id_token, 
-    client_id: GOOGLE_CLIENT_ID 
-  });
-  localStorage.setItem("accessToken", res.data.access);
-  const userRes = await api.get("/users/me/");
-  setUser(userRes.data);
-};
-
-
-  // Verify OTP
+  // ---------- OTP verification ----------
   const verifyOtp = async (user_id, otp) => {
     try {
       const res = await api.post("/users/verify-otp/", { user_id, otp });
@@ -76,47 +63,127 @@ const loginWithGoogle = async (id_token) => {
       setOtpPending(null);
       return res.data.message;
     } catch (err) {
-      setError(err.response?.data?.detail || "OTP verification failed");
+      setError(err.response?.data?.detail || err.message || "OTP verification failed");
       throw err;
     }
   };
 
+  // ---------- Resend OTP ----------
+  const resendOtp = async (user_id) => {
+    try {
+      await api.post("/users/resend-otp/", { user_id });
+      toast.success("OTP resent! Check your email.");
+    } catch (err) {
+      setError(err.response?.data?.detail || err.message || "Failed to resend OTP");
+      throw err;
+    }
+  };
+
+ 
+  // ---------- Google login ----------
+const loginWithGoogle = async (id_token) => {
+  try {
+    setError(null);
+    const res = await api.post("/users/google-oauth/", { id_token, client_id: GOOGLE_CLIENT_ID });
+    localStorage.setItem("accessToken", res.data.access);
+
+    // user ka hel response
+    const userRes = res.data.user;  // <-- isticmaal response-ka backend si toos ah
+    setUser(userRes);
+
+    if (!userRes.is_verified) {
+      toast("Please verify your email sent by Google before using the account.", { icon: "📧" });
+    }
+
+    return { user: userRes, access: res.data.access, refresh: res.data.refresh }; // si frontend u helo res.user
+  } catch (err) {
+    setError(err.response?.data?.detail || err.message || "Google login failed");
+    throw err;
+  }
+};
+
+// ---------- Register ----------
+const register = async (data) => {
+  try {
+    setError(null);
+    const res = await api.post("/users/register/", data);
+    localStorage.setItem("accessToken", res.data.access);
+
+    const userRes = res.data.user;  // <-- isticmaal response-ka backend
+    setUser(userRes);
+
+    if (!userRes.is_verified) {
+      toast("Please verify your email before using the account.", { icon: "📧" });
+    }
+
+    return { user: userRes, access: res.data.access, refresh: res.data.refresh }; // frontend-ka Register.jsx
+  } catch (err) {
+    setError(err.response?.data?.detail || err.message || "Registration failed");
+    throw err;
+  }
+};
+
+
+  // ---------- Logout ----------
   const logout = () => {
     localStorage.removeItem("accessToken");
     setUser(null);
     setOtpPending(null);
   };
 
-  const register = async (data) => {
-    try {
-      setError(null);
-      const res = await api.post("/users/register/", data);
-      localStorage.setItem("accessToken", res.data.access);
 
-      const userRes = await api.get("/users/me/");
-      setUser(userRes.data);
-    } catch (err) {
-      console.error(err);
-      setError(err.response?.data || "Registration failed");
-      throw err;
-    }
-  };
+
+const resetPassword = async (email) => {
+  try {
+    await api.post("/users/reset-password/", { email });
+    toast.success("Password reset link sent to your email");
+  } catch (err) {
+    setError(err.response?.data?.error || "Reset request failed");
+    throw err;
+  }
+};
+
+const resetPasswordConfirm = async (uid, token, password) => {
+  try {
+    await api.post("/users/reset-password-confirm/", { uid, token, password });
+    toast.success("Password changed successfully");
+  } catch (err) {
+    setError(err.response?.data?.error || "Reset failed");
+    throw err;
+  }
+};
+
+const verifyEmail = async (token) => {
+  try {
+    const res = await api.post("/users/verify-email/", { token });
+    toast.success(res.data.message);
+  } catch (err) {
+    setError(err.response?.data?.error || "Email verification failed");
+    throw err;
+  }
+};
+
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        loading,
-        error,
-        otpPending,
-        login,
-        loginWithGoogle,   // 🔑 expose Google login
-        verifyOtp,
-        logout,
-        register,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+   <AuthContext.Provider
+  value={{
+    user,
+    loading,
+    error,
+    otpPending,
+    login,
+    verifyOtp,
+    resendOtp,
+    loginWithGoogle,
+    logout,
+    register,
+    resetPassword,
+    resetPasswordConfirm,
+    verifyEmail,
+  }}
+>
+  {children}
+</AuthContext.Provider>
+
   );
 }

@@ -77,10 +77,25 @@ class User(AbstractUser):
     phone = models.CharField(max_length=20, blank=True, null=True)
     photo = models.ImageField(upload_to="profile_photos/", blank=True, null=True)
     two_factor_enabled = models.BooleanField(default=False)
-    otp_code = models.CharField(max_length=6, blank=True, null=True)
-    otp_created_at = models.DateTimeField(blank=True, null=True)
 
     REQUIRED_FIELDS = ["email", "preferred_currency"]
+
+    def __str__(self):
+        return self.username
+
+
+# ----- OTP Codes -----
+class OTP(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    code = models.CharField(max_length=6)
+    is_used = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def is_valid(self, valid_minutes=30):
+        return (
+            not self.is_used and
+            timezone.now() - self.created_at <= timezone.timedelta(minutes=valid_minutes)
+        )
 
 # ----- Categories -----
 class Category(SoftDeleteModel):

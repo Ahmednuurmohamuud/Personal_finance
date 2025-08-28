@@ -1,14 +1,13 @@
 // src/pages/Register.jsx
-import React, { useState, useContext } from "react";
+import React, { useState, useContext, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { AuthContext } from "../services/AuthContext";
-import { useEffect } from "react";
 import api from "../services/api";
 import toast from "react-hot-toast";
-import { GoogleLogin } from "@react-oauth/google"; // React Google OAuth SDK
+import { GoogleLogin } from "@react-oauth/google";
 
 export default function Register() {
-  const { login, loginWithGoogle } = useContext(AuthContext);
+  const { register, loginWithGoogle } = useContext(AuthContext);
   const navigate = useNavigate();
 
   const [form, setForm] = useState({
@@ -17,71 +16,97 @@ export default function Register() {
     password: "",
     preferred_currency: "USD",
   });
-  const [currencies, setCurrencies] = useState([]);// ✅ list of currencies
+  const [currencies, setCurrencies] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  // Fetch currencies on mount
-  // Fetch currencies on mount
-useEffect(() => {
-  const fetchCurrencies = async () => {
-    try {
-      const res = await api.get("/currencies/");
-      setCurrencies(res.data.results || res.data); // ✅ ensure array
-    } catch (err) {
-      console.error("Failed to load currencies", err);
+  const [emailNotVerified, setEmailNotVerified] = useState(false);
+  const [userId, setUserId] = useState(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState(""); // ✅ password validation
+
+  // Fetch currencies
+  useEffect(() => {
+    const fetchCurrencies = async () => {
+      try {
+        const res = await api.get("/currencies/");
+        setCurrencies(res.data.results || res.data);
+      } catch (err) {
+        console.error("Failed to load currencies", err);
+      }
+    };
+    fetchCurrencies();
+  }, []);
+
+  const handleChange = (e) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+
+    // Real-time validation for password
+    if (e.target.name === "password") {
+      if (e.target.value.length < 8) {
+        setPasswordError("Password must be at least 8 characters");
+      } else {
+        setPasswordError("");
+      }
     }
   };
-  fetchCurrencies();
-}, []);
-
-  const handleChange = (e) =>
-    setForm({ ...form, [e.target.name]: e.target.value });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (form.password.length < 8) {
+      setPasswordError("Password must be at least 8 characters");
+      return;
+    }
+
     setLoading(true);
     setError("");
-    setSuccess("");
 
     try {
-      const res = await fetch("http://localhost:8000/api/users/register/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-      const data = await res.json();
-
-      if (!res.ok) throw new Error(data.detail || "Registration failed");
-
-      setSuccess("Account created successfully!");
-
-      // Auto login user after register
-      localStorage.setItem("accessToken", data.access);
-      localStorage.setItem("refreshToken", data.refresh);
-      login(data.user, data.access);
-
-      navigate("/dashboard");
+      const res = await register(form);
+      if (!res.user.is_verified) {
+        setEmailNotVerified(true);
+        setUserId(res.user.id);
+        toast("Please verify your email before using the account.", { icon: "📧" });
+      } else {
+        toast.success("Account created successfully!");
+        navigate("/dashboard");
+      }
     } catch (err) {
-      setError(err.message);
+      setError(err.response?.data?.detail || err.message || "Registration failed");
     } finally {
       setLoading(false);
     }
   };
 
-  // ✅ Google Sign-Up
+  const handleResendVerification = async () => {
+    if (!userId) return;
+    setLoading(true);
+    setError("");
+    try {
+      const res = await api.post("/users/resend-verification/", { user_id: userId });
+      toast.success(res.data.detail || "Verification email resent! 📧");
+    } catch (err) {
+      setError(err.response?.data?.detail || "Failed to resend verification email");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleGoogleSignUp = async (credentialResponse) => {
     setLoading(true);
     setError("");
     try {
-      if (!credentialResponse.credential)
-        throw new Error("Google Sign-Up failed");
+      if (!credentialResponse.credential) throw new Error("Google Sign-Up failed");
 
-      // Send Google token to backend (loginWithGoogle should handle it)
-      await loginWithGoogle(credentialResponse.credential);
+      const res = await loginWithGoogle(credentialResponse.credential);
 
-      toast.success("Signed up with Google!");
-      navigate("/dashboard");
+      if (!res.user.is_verified) {
+        setEmailNotVerified(true);
+        setUserId(res.user.id);
+        toast("Please verify your email sent by Google before using the account.", { icon: "📧" });
+      } else {
+        toast.success("Signed up successfully with Google!");
+        navigate("/dashboard");
+      }
     } catch (err) {
       console.error(err);
       toast.error("Google Sign-Up failed");
@@ -101,9 +126,7 @@ useEffect(() => {
         </h2>
 
         {error && <p className="text-red-500 text-sm">{error}</p>}
-        {success && <p className="text-green-500 text-sm">{success}</p>}
 
-        {/* Google Sign-Up button */}
         <div className="flex justify-center mt-2">
           <GoogleLogin
             onSuccess={handleGoogleSignUp}
@@ -126,6 +149,7 @@ useEffect(() => {
           required
           className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
+
         <input
           type="email"
           name="email"
@@ -135,16 +159,28 @@ useEffect(() => {
           required
           className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
-        <input
-          type="password"
-          name="password"
-          value={form.password}
-          onChange={handleChange}
-          placeholder="Password"
-          required
-          className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        />
-          {/* ✅ Dynamic currency dropdown */}
+
+        <div className="relative w-full">
+          <input
+            type={showPassword ? "text" : "password"}
+            name="password"
+            value={form.password}
+            onChange={handleChange}
+            placeholder="Password"
+            required
+            className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+          <button
+            type="button"
+            className="absolute right-2 top-2 text-gray-500"
+            onClick={() => setShowPassword(!showPassword)}
+          >
+            {showPassword ? "Hide" : "Show"}
+          </button>
+        </div>
+
+        {passwordError && <p className="text-red-500 text-sm">{passwordError}</p>} {/* ✅ Real-time password error */}
+
         <select
           name="preferred_currency"
           value={form.preferred_currency}
@@ -157,6 +193,17 @@ useEffect(() => {
             </option>
           ))}
         </select>
+
+        {emailNotVerified && (
+          <button
+            type="button"
+            onClick={handleResendVerification}
+            disabled={loading}
+            className="text-indigo-500 hover:underline self-end"
+          >
+            {loading ? "Resending..." : "Resend Verification Email"}
+          </button>
+        )}
 
         <button
           type="submit"
