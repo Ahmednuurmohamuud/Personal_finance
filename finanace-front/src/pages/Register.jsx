@@ -1,11 +1,14 @@
 // src/pages/Register.jsx
 import React, { useState, useContext } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { AuthContext } from "../services/AuthContext";
-
+import { useEffect } from "react";
+import api from "../services/api";
+import toast from "react-hot-toast";
+import { GoogleLogin } from "@react-oauth/google"; // React Google OAuth SDK
 
 export default function Register() {
-  const { login } = useContext(AuthContext); // mark user register, si toos ah login samee
+  const { login, loginWithGoogle } = useContext(AuthContext);
   const navigate = useNavigate();
 
   const [form, setForm] = useState({
@@ -14,9 +17,23 @@ export default function Register() {
     password: "",
     preferred_currency: "USD",
   });
+  const [currencies, setCurrencies] = useState([]);// ✅ list of currencies
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  // Fetch currencies on mount
+  // Fetch currencies on mount
+useEffect(() => {
+  const fetchCurrencies = async () => {
+    try {
+      const res = await api.get("/currencies/");
+      setCurrencies(res.data.results || res.data); // ✅ ensure array
+    } catch (err) {
+      console.error("Failed to load currencies", err);
+    }
+  };
+  fetchCurrencies();
+}, []);
 
   const handleChange = (e) =>
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -42,9 +59,9 @@ export default function Register() {
       // Auto login user after register
       localStorage.setItem("accessToken", data.access);
       localStorage.setItem("refreshToken", data.refresh);
-      login(data.user, data.access); // update AuthContext
+      login(data.user, data.access);
 
-      navigate("/dashboard"); // redirect to dashboard
+      navigate("/dashboard");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -52,8 +69,25 @@ export default function Register() {
     }
   };
 
-  const handleGoogleSignIn = () => {
-    alert("Google Sign-In clicked");
+  // ✅ Google Sign-Up
+  const handleGoogleSignUp = async (credentialResponse) => {
+    setLoading(true);
+    setError("");
+    try {
+      if (!credentialResponse.credential)
+        throw new Error("Google Sign-Up failed");
+
+      // Send Google token to backend (loginWithGoogle should handle it)
+      await loginWithGoogle(credentialResponse.credential);
+
+      toast.success("Signed up with Google!");
+      navigate("/dashboard");
+    } catch (err) {
+      console.error(err);
+      toast.error("Google Sign-Up failed");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -69,22 +103,17 @@ export default function Register() {
         {error && <p className="text-red-500 text-sm">{error}</p>}
         {success && <p className="text-green-500 text-sm">{success}</p>}
 
-        <button
-          type="button"
-          onClick={handleGoogleSignIn}
-          className="w-full mt-4 bg-gray-100 flex items-center justify-center h-12 rounded-full gap-2 hover:bg-gray-200 transition"
-        >
-          <img
-            src="https://raw.githubusercontent.com/prebuiltui/prebuiltui/main/assets/login/googleLogo.svg"
-            alt="googleLogo"
-            className="w-5 h-5"
+        {/* Google Sign-Up button */}
+        <div className="flex justify-center mt-2">
+          <GoogleLogin
+            onSuccess={handleGoogleSignUp}
+            onError={() => toast.error("Google Sign-Up failed")}
           />
-          Sign in with Google
-        </button>
+        </div>
 
         <div className="flex items-center gap-4 w-full my-5">
           <div className="w-full h-px bg-gray-300/90"></div>
-          <p className="text-sm text-gray-500/90">or sign in with email</p>
+          <p className="text-sm text-gray-500/90">or sign up with email</p>
           <div className="w-full h-px bg-gray-300/90"></div>
         </div>
 
@@ -115,15 +144,18 @@ export default function Register() {
           required
           className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
+          {/* ✅ Dynamic currency dropdown */}
         <select
           name="preferred_currency"
           value={form.preferred_currency}
           onChange={handleChange}
           className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
         >
-          <option value="USD">USD</option>
-          <option value="EUR">EUR</option>
-          <option value="GBP">GBP</option>
+          {currencies.map((c) => (
+            <option key={c.code} value={c.code}>
+              {c.code} — {c.name}
+            </option>
+          ))}
         </select>
 
         <button
@@ -136,9 +168,9 @@ export default function Register() {
 
         <p className="text-sm text-gray-500 text-center mt-2">
           Already have an account?{" "}
-          <a href="/login" className="text-indigo-500 hover:underline">
+          <Link to="/login" className="text-indigo-500 hover:underline">
             Sign in
-          </a>
+          </Link>
         </p>
       </form>
     </div>

@@ -123,9 +123,6 @@ function Navbar() {
               <Link to="/settings" className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100">
                 <Settings className="w-4 h-4" /> Settings
               </Link>
-              <Link to="/archive" className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100">
-                <Archive className="w-4 h-4" /> Archive Items
-              </Link>
               <button onClick={() => { localStorage.removeItem("accessToken"); window.location.reload(); }}
                       className="flex items-center gap-2 w-full px-3 py-2 rounded-lg hover:bg-red-100 text-red-600">
                 <LogOut className="w-4 h-4" /> Logout

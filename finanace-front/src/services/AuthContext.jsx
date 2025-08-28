@@ -1,5 +1,6 @@
 // src/services/AuthContext.jsx
 import React, { createContext, useState, useEffect } from "react";
+const GOOGLE_CLIENT_ID = "379616936425-u0q0jabn6172fk3oft9bbc11th2fdt34.apps.googleusercontent.com";
 import api from "./api";
 
 export const AuthContext = createContext();
@@ -8,9 +9,8 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [otpPending, setOtpPending] = useState(null); // 2FA state
+  const [otpPending, setOtpPending] = useState(null);
 
-  // Check if user is logged in on app start
   useEffect(() => {
     const fetchUser = async () => {
       const token = localStorage.getItem("accessToken");
@@ -29,21 +29,19 @@ export function AuthProvider({ children }) {
     fetchUser();
   }, []);
 
-  // Login
+  // Login (username/password)
   const login = async (usernameOrEmail, password) => {
     try {
       setError(null);
       const res = await api.post("/users/login/", {
-        username: usernameOrEmail, // ✅ backend expects "username" (email also works)
+        username: usernameOrEmail,
         password,
       });
 
       if (res.data.otp_required) {
-        // 2FA enabled → wait for OTP
         setOtpPending({ user_id: res.data.user_id });
         return { otp_required: true };
       } else {
-        // Normal login
         localStorage.setItem("accessToken", res.data.access);
         const userRes = await api.get("/users/me/");
         setUser(userRes.data);
@@ -54,6 +52,19 @@ export function AuthProvider({ children }) {
       throw err;
     }
   };
+
+  // ✅ Google Login
+// Google login
+const loginWithGoogle = async (id_token) => {
+  const res = await api.post("/users/google-oauth/", { 
+    id_token, 
+    client_id: GOOGLE_CLIENT_ID 
+  });
+  localStorage.setItem("accessToken", res.data.access);
+  const userRes = await api.get("/users/me/");
+  setUser(userRes.data);
+};
+
 
   // Verify OTP
   const verifyOtp = async (user_id, otp) => {
@@ -70,14 +81,12 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // Logout
   const logout = () => {
     localStorage.removeItem("accessToken");
     setUser(null);
     setOtpPending(null);
   };
 
-  // Register
   const register = async (data) => {
     try {
       setError(null);
@@ -101,6 +110,7 @@ export function AuthProvider({ children }) {
         error,
         otpPending,
         login,
+        loginWithGoogle,   // 🔑 expose Google login
         verifyOtp,
         logout,
         register,

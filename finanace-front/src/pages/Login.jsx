@@ -1,10 +1,14 @@
+// src/pages/Login.jsx
 import React, { useState, useContext } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { AuthContext } from "../services/AuthContext";
 import toast from "react-hot-toast";
+import { FcGoogle } from "react-icons/fc"; // Google icon
+import { GoogleLogin,} from "@react-oauth/google"; // React Google OAuth SDK
 
 export default function Login() {
-  const { login, otpPending, verifyOtp } = useContext(AuthContext);
+  const { login, otpPending, verifyOtp, resendOtp, loginWithGoogle } =
+    useContext(AuthContext);
   const [form, setForm] = useState({ username: "", password: "" });
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
@@ -14,6 +18,7 @@ export default function Login() {
   const handleChange = (e) =>
     setForm({ ...form, [e.target.name]: e.target.value });
 
+  // Normal login (username + password)
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -33,6 +38,7 @@ export default function Login() {
     }
   };
 
+  // OTP verification
   const handleOtpSubmit = async (e) => {
     e.preventDefault();
     if (!otpPending) return;
@@ -44,6 +50,23 @@ export default function Login() {
       navigate("/dashboard");
     } catch (err) {
       setError(err.response?.data?.detail || "OTP verification failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Google login
+  const handleGoogleLogin = async (credentialResponse) => {
+    setLoading(true);
+    setError("");
+    try {
+      if (!credentialResponse.credential) throw new Error("Google login failed");
+      await loginWithGoogle(credentialResponse.credential); // send id_token to backend
+      toast.success("Logged in with Google!");
+      navigate("/dashboard");
+    } catch (err) {
+      console.error(err);
+      toast.error("Google login failed");
     } finally {
       setLoading(false);
     }
@@ -87,7 +110,6 @@ export default function Login() {
               className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
 
-            {/* Forgot password link */}
             <div className="text-right">
               <Link
                 to="/reset-password"
@@ -96,19 +118,36 @@ export default function Login() {
                 Forgot password?
               </Link>
             </div>
+
+            {/* Google login */}
+            <div className="flex justify-center mt-4">
+              <GoogleLogin
+                onSuccess={handleGoogleLogin}
+                onError={() => toast.error("Google login failed")}
+              />
+            </div>
           </>
         )}
 
         {otpPending && (
-          <input
-            type="text"
-            name="otp"
-            value={otp}
-            onChange={(e) => setOtp(e.target.value)}
-            placeholder="Enter OTP"
-            required
-            className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
+          <>
+            <input
+              type="text"
+              name="otp"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value)}
+              placeholder="Enter OTP"
+              required
+              className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <button
+              type="button"
+              onClick={() => resendOtp(otpPending.user_id)}
+              className="text-sm text-indigo-500 hover:underline self-end"
+            >
+              Resend OTP
+            </button>
+          </>
         )}
 
         <button

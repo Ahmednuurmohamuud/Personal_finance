@@ -252,26 +252,40 @@ def reset_password_confirm(request):
     return Response({"status": "password_changed"})
 
 
-
-# -------- Google OAuth --------
-from google.oauth2 import id_token as google_id_token
 @api_view(["POST"]) 
 @permission_classes([permissions.AllowAny])
 def google_oauth(request):
     token = request.data.get("id_token")
-    if not token: return Response({"detail":"id_token required"}, status=400)
+    client_id = request.data.get("client_id")
+    if not token or not client_id:
+        return Response({"detail":"id_token and client_id required"}, status=400)
+
     try:
-        info = google_id_token.verify_oauth2_token(token, google_requests.Request(), request.data.get("client_id"))
-        email = info["email"]; gid = info["sub"]
-        user, _ = User.objects.get_or_create(email=email, defaults={
-            "username": email.split("@")[0],
-            "google_id": gid,
-            "preferred_currency": Currency.objects.get(code="USD"),
-        })
+        info = google_id_token.verify_oauth2_token(
+            token, google_requests.Request(), client_id
+        )
+        email = info["email"]
+        gid = info["sub"]
+
+        user, _ = User.objects.get_or_create(
+            email=email,
+            defaults={
+                "username": email.split("@")[0],
+                "google_id": gid,
+                "preferred_currency": Currency.objects.get(code="USD"),
+            }
+        )
         if not user.google_id:
-            user.google_id = gid; user.save(update_fields=["google_id"])
+            user.google_id = gid
+            user.save(update_fields=["google_id"])
+
         refresh = RefreshToken.for_user(user)
-        return Response({"access": str(refresh.access_token), "refresh": str(refresh)})
+        return Response({
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "user": UserSerializer(user).data
+        })
+
     except Exception as e:
         return Response({"detail": str(e)}, status=400)
 
@@ -294,9 +308,9 @@ class OwnedModelViewSet(viewsets.ModelViewSet):
         obj.save(update_fields=["is_deleted","updated_at"])
         return Response(self.get_serializer(obj).data)
 
-# -------- Currencies -------- Kaliya GET currency.
+# -------- Currencies --------
 class CurrencyViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Currency.objects.filter(is_active=True)
+    queryset = Currency.objects.filter(is_active=True).order_by("code")  # ✅ Warning fix
     serializer_class = CurrencySerializer
     permission_classes = [permissions.AllowAny]
     lookup_field = "code"
