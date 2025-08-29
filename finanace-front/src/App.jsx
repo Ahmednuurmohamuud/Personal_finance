@@ -1,32 +1,28 @@
 import React from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./services/AuthContext";
-import PrivateRoute from "./components/PrivateRoute"; // Protected route
+import PrivateRoute from "./components/PrivateRoute";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 import Transactions from "./pages/Transactions";
 import Accounts from "./pages/Accounts";
-import Home from "./pages/Home";  
-
+import Home from "./pages/Home";
 import VerifyEmail from "./pages/VerifyEmail";
-
-
-import Budgets from "./pages/Budgets";  
+import Budgets from "./pages/Budgets";
 import Bills from "./pages/Bills";
-import Reports from "./pages/Reports"; 
+import Reports from "./pages/Reports";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
-import Register from "./pages/Register";   
-// import Profile from "./pages/Profile";
+import Register from "./pages/Register";
 import Settings from "./pages/Settings";
 import Notifications from "./pages/notification";
-
 import ResetPassword from "./pages/ResetPassword";
 import ResetPasswordConfirm from "./pages/ResetPasswordConfirm";
 
+import { Toaster } from "react-hot-toast"; // ⭐ muhiim ah
 
-import './index.css'; // Tailwind CSS
-import './App.css';   // Custom styles
+import './index.css'; 
+import './App.css';   
 
 function App() {
   return (
@@ -37,7 +33,6 @@ function App() {
             <Navbar />
             <Routes>
               <Route path="/" element={<Home />} />
-              
               <Route
                 path="/dashboard"
                 element={
@@ -48,9 +43,6 @@ function App() {
               />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
-
-              {/* <Route path="/profile" element={<Profile />} /> */}
-
               <Route
                 path="/transactions"
                 element={
@@ -59,7 +51,6 @@ function App() {
                   </PrivateRoute>
                 }
               />
-
               <Route
                 path="/accounts"
                 element={
@@ -68,7 +59,6 @@ function App() {
                   </PrivateRoute>
                 }
               />
-
               <Route
                 path="/budgets"
                 element={
@@ -77,7 +67,6 @@ function App() {
                   </PrivateRoute>
                 }
               />
-
               <Route
                 path="/recurring"
                 element={
@@ -86,10 +75,7 @@ function App() {
                   </PrivateRoute>
                 }
               />
-
-              {/* Redirect /recurring to /bills */}
-              {/* <Route path="/recurring" element={<Navigate to="/bills" replace />} /> */}
-                   <Route
+              <Route
                 path="/reports"
                 element={
                   <PrivateRoute>
@@ -100,10 +86,6 @@ function App() {
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/verify-email" element={<VerifyEmail />} />
               <Route path="/reset-password-confirm" element={<ResetPasswordConfirm />} />
-              {/* Notifications and Settings */}
-            
-             
-                
               <Route
                 path="/notifications"
                 element={
@@ -124,6 +106,7 @@ function App() {
           </main>
           <Footer />
         </div>
+        <Toaster position="top-right" reverseOrder={false} /> {/* ⭐ Halkaan ku dar */}
       </Router>
     </AuthProvider>
   );

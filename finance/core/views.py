@@ -64,8 +64,7 @@ def send_otp_email(user):
     )
 
 # =========================
-# ----- Login View --------
-# =========================
+# ----- Login View -----
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def login(request):
@@ -75,22 +74,33 @@ def login(request):
     if not username_or_email or not password:
         return Response({"detail": "Username/email and password required"}, status=400)
 
-    # -------- Step 1: Hubi user jiritaanka --------
+    # Hubi user jiritaanka
     try:
         user_obj = User.objects.get(Q(username=username_or_email) | Q(email=username_or_email))
     except User.DoesNotExist:
         return Response({"detail": "Username or email is incorrect"}, status=400)
 
-    # -------- Step 2: Hubi password saxnaanta --------
+    # Hubi password
     if not user_obj.check_password(password):
         return Response({"detail": "Password is incorrect"}, status=400)
 
-    # -------- Step 3: Authenticate user --------
+    # Hubi verify
+    if not getattr(user_obj, "is_verified", False):
+        return Response(
+            {
+                "detail": "Please verify your account before logging in.",
+                "verification_required": True,
+                "user_id": str(user_obj.id)
+            },
+            status=403
+        )
+
+    # Authenticate
     user = authenticate(username=user_obj.username, password=password)
     if not user:
         return Response({"detail": "Authentication failed"}, status=400)
 
-    # -------- Step 4: Haddii 2FA enabled, OTP dir --------
+    # 2FA
     if getattr(user, "two_factor_enabled", False):
         send_otp_email(user)
         return Response({
@@ -99,7 +109,7 @@ def login(request):
             "message": "OTP sent to your email"
         })
 
-    # -------- Step 5: Normal login --------
+    # Normal login
     user.last_login = timezone.now()
     user.save(update_fields=["last_login"])
     refresh = RefreshToken.for_user(user)
@@ -109,9 +119,6 @@ def login(request):
         "refresh": str(refresh),
         "message": f"Welcome {user.username}"
     })
-
-
-
 # =========================
 # ----- OTP Verify --------
 OTP_VALID_MINUTES = 30
@@ -178,19 +185,26 @@ def send_verification_email(user):
         fail_silently=False,
     )
 
+# ----- Resend Verification -----
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def resend_verification(request):
     user_id = request.data.get("user_id")
     if not user_id:
         return Response({"detail": "user_id is required"}, status=400)
+
     try:
         user = User.objects.get(id=user_id)
-        # TODO: send verification email
+
+        if user.is_verified:
+            return Response({"detail": "User is already verified"}, status=400)
+
         send_verification_email(user)
         return Response({"detail": "Verification email sent"})
+
     except User.DoesNotExist:
         return Response({"detail": "User not found"}, status=404)
+
 
 # -------- Register endpoint --------
 @api_view(["POST"])

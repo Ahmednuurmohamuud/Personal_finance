@@ -3,42 +3,56 @@ import React, { useState, useContext } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { AuthContext } from "../services/AuthContext";
 import toast from "react-hot-toast";
-import { FcGoogle } from "react-icons/fc"; // Google icon
-import { GoogleLogin,} from "@react-oauth/google"; // React Google OAuth SDK
+import { GoogleLogin } from "@react-oauth/google";
+import { Eye, EyeOff } from "lucide-react";
 
 export default function Login() {
-  const { login, otpPending, verifyOtp, resendOtp, loginWithGoogle } =
-    useContext(AuthContext);
+  const {
+    login,
+    otpPending,
+    verifyOtp,
+    resendOtp,
+    resendVerification,
+    loginWithGoogle,
+  } = useContext(AuthContext);
+
   const [form, setForm] = useState({ username: "", password: "" });
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
 
   const handleChange = (e) =>
     setForm({ ...form, [e.target.name]: e.target.value });
 
-  // Normal login (username + password)
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError("");
     try {
       const res = await login(form.username, form.password);
+
       if (res.otp_required) {
         toast("OTP sent! Please check your email.", { icon: "🔐" });
+      } else if (res.verification_required) {
+        toast.error(res.message);
       } else {
         toast.success(res.message);
         navigate("/dashboard");
       }
     } catch (err) {
-      setError(err.response?.data?.detail || "Login failed");
+      const detail = err.response?.data?.detail || "Login failed";
+      setError(detail);
+
+      if (detail.toLowerCase().includes("verify")) {
+        toast.error("⚠️ Please verify your account before logging in.");
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  // OTP verification
   const handleOtpSubmit = async (e) => {
     e.preventDefault();
     if (!otpPending) return;
@@ -55,13 +69,12 @@ export default function Login() {
     }
   };
 
-  // Google login
   const handleGoogleLogin = async (credentialResponse) => {
     setLoading(true);
     setError("");
     try {
       if (!credentialResponse.credential) throw new Error("Google login failed");
-      await loginWithGoogle(credentialResponse.credential); // send id_token to backend
+      await loginWithGoogle(credentialResponse.credential);
       toast.success("Logged in with Google!");
       navigate("/dashboard");
     } catch (err) {
@@ -87,7 +100,37 @@ export default function Login() {
             : "Welcome back! Please sign in to continue"}
         </p>
 
-        {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+        {/* Error + Resend Verification */}
+        {error && (
+          <div className="flex flex-col items-center gap-2 text-center">
+            <p
+              className={`text-sm p-2 rounded ${
+                error.toLowerCase().includes("verify")
+                  ? "text-gray-700 bg-gray-100"
+                  : "text-red-500"
+              }`}
+            >
+              {error}
+            </p>
+            {error.toLowerCase().includes("verify") && (
+    <button
+        type="button"
+        onClick={async () => {
+            try {
+                await resendVerification(otpPending?.user_id || form.username);
+                toast.success("Verification email resent! 📧");
+            } catch (err) {
+                toast.error(err.response?.data?.detail || "Failed to resend verification email");
+            }
+        }}
+        className="bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700 transition"
+    >
+        Resend Verification Email
+    </button>
+)}
+
+          </div>
+        )}
 
         {!otpPending && (
           <>
@@ -100,15 +143,25 @@ export default function Login() {
               required
               className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
-            <input
-              type="password"
-              name="password"
-              value={form.password}
-              onChange={handleChange}
-              placeholder="Password"
-              required
-              className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
+
+            <div className="relative w-full">
+              <input
+                type={showPassword ? "text" : "password"}
+                name="password"
+                value={form.password}
+                onChange={handleChange}
+                placeholder="Password"
+                required
+                className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-indigo-500 pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute inset-y-0 right-3 flex items-center text-gray-500 hover:text-gray-700"
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
 
             <div className="text-right">
               <Link
@@ -119,7 +172,6 @@ export default function Login() {
               </Link>
             </div>
 
-            {/* Google login */}
             <div className="flex justify-center mt-4">
               <GoogleLogin
                 onSuccess={handleGoogleLogin}

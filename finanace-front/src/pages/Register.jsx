@@ -22,7 +22,7 @@ export default function Register() {
   const [emailNotVerified, setEmailNotVerified] = useState(false);
   const [userId, setUserId] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
-  const [passwordError, setPasswordError] = useState(""); // ✅ password validation
+  const [passwordError, setPasswordError] = useState("");
 
   // Fetch currencies
   useEffect(() => {
@@ -40,50 +40,55 @@ export default function Register() {
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
 
-    // Real-time validation for password
     if (e.target.name === "password") {
-      if (e.target.value.length < 8) {
-        setPasswordError("Password must be at least 8 characters");
-      } else {
-        setPasswordError("");
-      }
+      setPasswordError(
+        e.target.value.length < 8
+          ? "Password must be at least 8 characters"
+          : ""
+      );
     }
   };
 
+  // ===== Register with email =====
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (form.password.length < 8) {
-      setPasswordError("Password must be at least 8 characters");
-      return;
-    }
+    if (form.password.length < 8) return setPasswordError("Password must be at least 8 characters");
 
     setLoading(true);
     setError("");
 
     try {
       const res = await register(form);
+
       if (!res.user.is_verified) {
         setEmailNotVerified(true);
         setUserId(res.user.id);
-        toast("Please verify your email before using the account.", { icon: "📧" });
+        toast("📧 Please check your email to verify your account.");
       } else {
         toast.success("Account created successfully!");
         navigate("/dashboard");
       }
     } catch (err) {
-      setError(err.response?.data?.detail || err.message || "Registration failed");
+      const errorMsg =
+        err.response?.data?.email?.[0] ||
+        err.response?.data?.username?.[0] ||
+        err.response?.data?.detail ||
+        "Registration failed";
+      toast.error(errorMsg);
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
   };
 
+  // ===== Resend Verification Email =====
   const handleResendVerification = async () => {
     if (!userId) return;
     setLoading(true);
     setError("");
     try {
       const res = await api.post("/users/resend-verification/", { user_id: userId });
-      toast.success(res.data.detail || "Verification email resent! 📧");
+      toast.success(res.data.detail || "Verification email sent! Check your inbox 📧");
     } catch (err) {
       setError(err.response?.data?.detail || "Failed to resend verification email");
     } finally {
@@ -91,6 +96,7 @@ export default function Register() {
     }
   };
 
+  // ===== Google Sign-Up =====
   const handleGoogleSignUp = async (credentialResponse) => {
     setLoading(true);
     setError("");
@@ -102,7 +108,7 @@ export default function Register() {
       if (!res.user.is_verified) {
         setEmailNotVerified(true);
         setUserId(res.user.id);
-        toast("Please verify your email sent by Google before using the account.", { icon: "📧" });
+        toast("📧 Please verify your email sent by Google before using the account.");
       } else {
         toast.success("Signed up successfully with Google!");
         navigate("/dashboard");
@@ -179,7 +185,7 @@ export default function Register() {
           </button>
         </div>
 
-        {passwordError && <p className="text-red-500 text-sm">{passwordError}</p>} {/* ✅ Real-time password error */}
+        {passwordError && <p className="text-red-500 text-sm">{passwordError}</p>}
 
         <select
           name="preferred_currency"

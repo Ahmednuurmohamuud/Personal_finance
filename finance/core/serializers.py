@@ -4,17 +4,50 @@ from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from .models import *
 
-# ---- User ----
+# ---- User & Auth ----
+
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
+
     class Meta:
         model = User
-        fields = ("id","username","email","password","preferred_currency","monthly_income_est","savings_goal")
+        fields = (
+            "id",
+            "username",
+            "email",
+            "password",
+            "preferred_currency",
+            "monthly_income_est",
+            "savings_goal",
+        )
+
     def validate_password(self, value):
-        validate_password(value); return value
-    def create(self, data):
-        pwd = data.pop("password")
-        user = User(**data); user.set_password(pwd); user.save(); return user
+        validate_password(value)
+        return value
+
+    def validate_email(self, value):
+        # hubi haddii email horay u jiray
+        user_qs = User.objects.filter(email=value)
+        if user_qs.exists():
+            user = user_qs.first()
+            if user.is_verified:
+                raise serializers.ValidationError("Email already exists")
+            else:
+                raise serializers.ValidationError(
+                    "Email already registered but not verified. Please check your inbox."
+                )
+        return value
+
+    def create(self, validated_data):
+        pwd = validated_data.pop("password")
+        user = User(**validated_data)
+        user.set_password(pwd)
+        user.is_verified = False   # 🚨 account cusub waligiis waa unverified
+        user.save()
+
+        # 🚀 halkan ku dir email verification
+        # tusaale: send_verification_email(user)
+        return user
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -24,6 +57,11 @@ class UserSerializer(serializers.ModelSerializer):
             "preferred_currency", "monthly_income_est", "savings_goal",
             "photo", "is_active", "is_verified", "date_joined", "two_factor_enabled"
         )
+        
+        read_only_fields = ("is_active", "is_verified", "date_joined")
+
+
+
 
 class OTPSerializer(serializers.ModelSerializer):
     class Meta:
