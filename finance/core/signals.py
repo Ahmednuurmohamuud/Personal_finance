@@ -1,40 +1,31 @@
 # core/signals.py
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
-from .models import Transaction, Account, Category, Budget, RecurringBill
+from django.db.models.expressions import CombinedExpression
+from .models import Transaction, Account, Category, Budget, RecurringBill, TransactionSplit, Attachment, Notification
 from .audit import create_audit
-from django.dispatch import receiver
-from .models import Notification
-# from Transaction.models import Transaction   # model-kaaga transaction
 from django.contrib.auth import get_user_model
-
-
-
 
 User = get_user_model()
 
-@receiver(post_save, sender=Transaction)
-def create_transaction_notification(sender, instance, created, **kwargs):
-    if created:
-        # Abuur notification cusub
-        Notification.objects.create(
-            user=instance.user,  # Halkan bedel 'recipient' → 'user'
-            type="TRANSACTION",  # ama NotificationType.choices value u dhigma
-            message=f"Transaction cusub ayaa lagu daray: {instance.amount} {instance.currency}"
-        )
+# ---------------- Helper ----------------
+def safe_balance(instance):
+    """
+    Hubi balance-ka instance-ka model (Account ama transaction.account)
+    Haddii balance uu yahay CombinedExpression, refresh_from_db ka hor inta aan float lagu darin
+    """
+    # Haddii balance uu CombinedExpression yahay
+    from django.db.models.expressions import CombinedExpression
 
-
-
-
-
-
-
-
-
+    if isinstance(instance.balance, CombinedExpression):
+        # Soo qaado instance sax ah oo DB
+        instance = type(instance).objects.get(pk=instance.pk)
+    return float(instance.balance)
 
 # ----------------- TRANSACTIONS -----------------
 @receiver(post_save, sender=Transaction)
 def audit_transaction(sender, instance, created, **kwargs):
+    safe_balance(instance.account)
     action = "CREATE" if created else "UPDATE"
     create_audit(
         user=instance.user,
@@ -49,11 +40,13 @@ def audit_transaction(sender, instance, created, **kwargs):
             "category": str(instance.category.id) if instance.category else None,
             "description": instance.description,
             "transaction_date": str(instance.transaction_date),
+            "balance": float(instance.account.balance),
         }
     )
 
 @receiver(post_delete, sender=Transaction)
 def audit_transaction_delete(sender, instance, **kwargs):
+    safe_balance(instance.account)
     create_audit(
         user=instance.user,
         table_name="transactions",
@@ -67,12 +60,14 @@ def audit_transaction_delete(sender, instance, **kwargs):
             "category": str(instance.category.id) if instance.category else None,
             "description": instance.description,
             "transaction_date": str(instance.transaction_date),
+            "balance": float(instance.account.balance),
         }
     )
 
 # ----------------- ACCOUNTS -----------------
 @receiver(post_save, sender=Account)
 def audit_account(sender, instance, created, **kwargs):
+    safe_balance(instance)
     action = "CREATE" if created else "UPDATE"
     create_audit(
         user=instance.user,
@@ -90,6 +85,7 @@ def audit_account(sender, instance, created, **kwargs):
 
 @receiver(post_delete, sender=Account)
 def audit_account_delete(sender, instance, **kwargs):
+    safe_balance(instance)
     create_audit(
         user=instance.user,
         table_name="accounts",
@@ -210,10 +206,7 @@ def audit_recurring_bill_delete(sender, instance, **kwargs):
         }
     )
 
-
 # ----------------- TRANSACTION SPLITS -----------------
-from .models import TransactionSplit, Attachment
-
 @receiver(post_save, sender=TransactionSplit)
 def audit_transaction_split(sender, instance, created, **kwargs):
     action = "CREATE" if created else "UPDATE"

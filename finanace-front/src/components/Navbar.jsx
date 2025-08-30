@@ -70,6 +70,7 @@ function Navbar() {
         <Link to="/accounts">Accounts</Link>
         <Link to="/budgets">Budgets</Link>
         <Link to="/recurring">Bills</Link>
+         <Link to="/categories">categories</Link>
         <Link to="/reports">Reports</Link>
 
         {/* Search Bar */}

@@ -1,5 +1,7 @@
 from django.db import models
 import uuid
+from django.db import transaction as db_transaction
+from django.db.models import Sum, F
 from django.db.models import Q
 
 from datetime import date
@@ -8,6 +10,9 @@ from django.contrib.auth.models import AbstractUser
 from django.contrib.postgres.search import SearchVectorField
 from django.contrib.postgres.indexes import GinIndex
 from django.utils import timezone
+from django.core.exceptions import ValidationError
+from django.db import transaction
+from django.db.models import Q, F
 
 # ----- Choices matching your ENUMs -----
 class AccountType(models.TextChoices):
@@ -60,10 +65,11 @@ class Currency(models.Model):
     name = models.CharField(max_length=255, unique=True)
     symbol = models.CharField(max_length=10)
     is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(default=timezone.now)
-    updated_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+def __str__(self):
+    return self.code
 
-    def _str_(self): return self.code
 
 # ----- User -----
 class User(AbstractUser):
@@ -124,6 +130,7 @@ class Account(SoftDeleteModel):
 
     def __str__(self):
       return f"{self.name} ({self.type})"
+    
 
 
 # ----- Recurring Bills (declared before Transaction for FK) -----
@@ -149,6 +156,7 @@ class RecurringBill(SoftDeleteModel):
             models.Index(fields=["account"]),
         ]
 
+# ----- Transactions -----
 # ----- Transactions -----
 class Transaction(SoftDeleteModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -184,7 +192,36 @@ class Transaction(SoftDeleteModel):
             )
         ]
 
+    # ---------------- Custom validation ----------------
+    def clean(self):
+        if self.type == TransactionType.EXPENSE and self.account.type == AccountType.SAVINGS:
+            raise ValidationError("Saving account cannot be used directly for expenses. Transfer required.")
+
+        if self.type == TransactionType.TRANSFER and self.account.type == AccountType.SAVINGS:
+            if self.target_account and self.target_account.type == AccountType.SAVINGS:
+                raise ValidationError("Cannot transfer from one savings account to another savings account.")
+
+        if self.currency != self.account.currency:
+            raise ValidationError("Transaction currency must match the account currency.")
+
+    # ---------------- Save method ----------------
+    def save(self, *args, **kwargs):
+        # Kaliya validate oo save transaction-ka, balance update ha dhicin halkan
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    # ---------------- Soft-delete rollback ----------------
+    def delete(self, using=None, keep_parents=False):
+        with transaction.atomic():
+            # Balance rollback hadda waxaa fiican in lagu sameeyo view ama serializer
+            super().delete(using=using, keep_parents=keep_parents)
+
+
+
 # ----- Transaction Splits -----
+
+
+
 class TransactionSplit(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     transaction = models.ForeignKey(Transaction, on_delete=models.CASCADE, related_name="splits")
@@ -194,6 +231,41 @@ class TransactionSplit(models.Model):
 
     class Meta:
         unique_together = (("transaction","category"),)
+
+    def clean(self):
+        existing_total = (
+            TransactionSplit.objects
+            .filter(transaction=self.transaction)
+            .exclude(pk=self.pk)
+            .aggregate(total=Sum("amount"))["total"] or 0
+        )
+
+        if existing_total + self.amount > self.transaction.amount:
+            raise ValidationError(
+                f"Total of splits ({existing_total + self.amount}) exceeds transaction amount ({self.transaction.amount})."
+            )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+
+        is_new = self._state.adding
+
+        with db_transaction.atomic():
+            super().save(*args, **kwargs)
+
+            # Update account balance only for new splits
+            if is_new:
+                account = self.transaction.account
+                if self.transaction.type == TransactionType.INCOME:
+                    account.balance = F("balance") + self.amount
+                elif self.transaction.type == TransactionType.EXPENSE:
+                    if account.balance < self.amount:
+                        raise ValidationError("Insufficient funds for expense.")
+                    account.balance = F("balance") - self.amount
+                account.save(update_fields=["balance"])
+                account.refresh_from_db(fields=["balance"])
+
+
 
 # ----- Attachments -----
 class Attachment(models.Model):

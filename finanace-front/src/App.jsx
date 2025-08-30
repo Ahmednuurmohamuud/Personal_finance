@@ -18,6 +18,7 @@ import Settings from "./pages/Settings";
 import Notifications from "./pages/notification";
 import ResetPassword from "./pages/ResetPassword";
 import ResetPasswordConfirm from "./pages/ResetPasswordConfirm";
+import Categories from "./pages/categories";
 
 import { Toaster } from "react-hot-toast"; // ⭐ muhiim ah
 
@@ -91,6 +92,15 @@ function App() {
                 element={
                   <PrivateRoute>
                     <Notifications />
+                  </PrivateRoute>
+                }
+              />
+
+              <Route
+                path="/categories"
+                element={
+                  <PrivateRoute>
+                    <Categories />
                   </PrivateRoute>
                 }
               />

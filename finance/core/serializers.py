@@ -3,6 +3,7 @@ from rest_framework import serializers
 from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from .models import *
+from decimal import Decimal
 
 # ---- User & Auth ----
 
@@ -48,6 +49,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         # 🚀 halkan ku dir email verification
         # tusaale: send_verification_email(user)
         return user
+
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -97,53 +99,61 @@ class AccountSerializer(serializers.ModelSerializer):
 class TransactionSplitSerializer(serializers.ModelSerializer):
     class Meta:
         model = TransactionSplit
-        fields = ("id","transaction","category","amount","created_at")
-        read_only_fields = ("id","created_at","transaction")
+        fields = "__all__"
+        read_only_fields = ["id", "created_at", "transaction"]
+
         
+# ---- Transaction ----
+
 class TransactionSerializer(serializers.ModelSerializer):
-    splits = TransactionSplitSerializer(many=True, required=False)
+    account = serializers.PrimaryKeyRelatedField(queryset=Account.objects.all())
+    target_account = serializers.PrimaryKeyRelatedField(queryset=Account.objects.all(), required=False, allow_null=True)
+    splits = TransactionSplitSerializer(many=True, read_only=True)   # <-- add this
 
     class Meta:
         model = Transaction
-        fields = (
-            "id","account","target_account","category","type","amount","currency",
-            "converted_amount","converted_currency","description","transaction_date",
-            "is_recurring_instance","recurring_bill","splits","is_deleted","created_at","updated_at"
-        )
-        read_only_fields = ("is_deleted","created_at","updated_at")
+        fields = ["id","user","account","target_account","type","amount","currency","description","transaction_date","splits"]
+        read_only_fields = ["id","user"]
 
-    def validate(self, attrs):
-        # restrict currency set
-        if attrs.get("currency") and attrs["currency"].code not in settings.ALLOWED_CURRENCIES:
-            raise serializers.ValidationError("Unsupported currency.")
+    def create(self, validated_data):
+        user = self.context["request"].user
+        validated_data["user"] = user
 
-        # 🟢 Transfer must have target_account
-        if attrs.get("type") == "Transfer" and not attrs.get("target_account"):
-            raise serializers.ValidationError({"target_account": "Target account is required for transfers."})
+        account = validated_data["account"]
+        target_account = validated_data.get("target_account")
+        amount = Decimal(validated_data["amount"])  # Make sure it's Decimal
+        tx_type = validated_data["type"]
 
-        return attrs
+        with transaction.atomic():
+            if tx_type == TransactionType.INCOME:
+                account.balance += amount
+                account.save(update_fields=["balance"])
 
-    def create(self, data):
-        splits = data.pop("splits", [])
-        data["user"] = self.context["request"].user
-        tx = super().create(data)
+            elif tx_type == TransactionType.EXPENSE:
+                if account.balance < amount:
+                    raise serializers.ValidationError("Insufficient funds for expense.")
+                account.balance -= amount
+                account.save(update_fields=["balance"])
 
-        total_splits = sum([s["amount"] for s in splits]) if splits else 0
-        if splits:
-            if total_splits <= 0 or total_splits > tx.amount:
-                raise serializers.ValidationError("Invalid split total.")
-            for s in splits:
-                TransactionSplit.objects.create(transaction=tx, **s)
+            elif tx_type == TransactionType.TRANSFER:
+                if account.balance < amount:
+                    raise serializers.ValidationError("Insufficient funds for transfer.")
+                account.balance -= amount
+                account.save(update_fields=["balance"])
+                target_account.balance += amount
+                target_account.save(update_fields=["balance"])
 
-        return tx
+            transaction_obj = Transaction.objects.create(**validated_data)
 
+        return transaction_obj
 
+        
 # ---- Attachment ----
 class AttachmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Attachment
-        fields = ("id","transaction","file_url","file_type","file_size","uploaded_at")
-        read_only_fields = ("id","uploaded_at","transaction")
+        fields = "__all__"
+        read_only_fields = ["id", "uploaded_at"]
 
 # ---- RecurringBill ----
 class RecurringBillSerializer(serializers.ModelSerializer):

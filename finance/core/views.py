@@ -12,8 +12,10 @@ from google.oauth2 import id_token as google_id_token
 from google.auth.transport import requests as google_requests
 from django.contrib.auth import authenticate
 from datetime import timedelta
+from django.shortcuts import get_object_or_404
 
 from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import filters
 from .models import AuditLog
 from .serializers import AuditLogSerializer
 from .filters import AuditLogFilter
@@ -48,12 +50,12 @@ token_generator = PasswordResetTokenGenerator()
 # ----- OTP Helpers -------
 # =========================
 def generate_otp(user):
-    otp_code = f"{random.randint(100000, 999999)}"
+    otp_code = f"{random.randint(100000, 999999)}" # 6-digit OTP
     OTP.objects.create(user=user, code=otp_code)
     return otp_code
 
 
-def send_otp_email(user):
+def send_otp_email(user):   
     otp = generate_otp(user)
     send_mail(
         subject="Your OTP Code",
@@ -410,61 +412,83 @@ class CategoryViewSet(OwnedModelViewSet):
     serializer_class = CategorySerializer
     filterset_fields = ["parent"]
 
-# -------- Accounts --------  CRUD accounts
-class AccountViewSet(OwnedModelViewSet):
-    queryset = Account.objects.all()
+# -------- Accounts --------  
+class AccountViewSet(viewsets.ModelViewSet):
     serializer_class = AccountSerializer
-    filterset_fields = ["type","is_active"]
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ["type", "is_active"]        # Filtering
+    search_fields = ["name"]                        # Search by name
+    ordering_fields = ["balance", "name", "created_at"]  # Ordering
 
-# -------- Transactions --------  CRUD transactions + Search API.
-class TransactionViewSet(OwnedModelViewSet):
-    queryset = Transaction.objects.select_related("account","target_account","category")
+    def get_queryset(self):
+        # Only show the user's own accounts that are not deleted
+        return Account.objects.filter(user=self.request.user, is_deleted=False)
+
+    @action(detail=True, methods=["post"])
+    def deactivate(self, request, pk=None):
+        account = self.get_object()
+        account.is_active = False
+        account.save(update_fields=["is_active"])
+        return Response({"status": "Account deactivated"})
+    
+
+# -------- Transactions --------  CRUD transactions
+# views.py
+class TransactionViewSet(viewsets.ModelViewSet):
     serializer_class = TransactionSerializer
-    filterset_class = TransactionFilter
-    search_fields = ["description"]
-    ordering_fields = ["transaction_date","amount","created_at"]
+    permission_classes = [permissions.IsAuthenticated]
 
-    @action(detail=False, methods=["get"])
-    def search(self, request):
-        q = request.query_params.get("q","").strip()
-        if not q: return Response([])
-        qobj = SearchQuery(q)
-        qs = (self.queryset
-              .filter(user=request.user, is_deleted=False)
-              .annotate(rank=SearchRank(models.F("description_tsv"), qobj))
-              .filter(description_tsv=qobj)
-              .order_by("-rank","-transaction_date")[:100])
-        return Response(TransactionSerializer(qs, many=True).data)
+    def get_queryset(self):
+        return Transaction.objects.filter(user=self.request.user, is_deleted=False)
+
+
 
 # Splits under transaction  -------- Splits transactions
-class TransactionSplitViewSet(mixins.CreateModelMixin,
-                              mixins.UpdateModelMixin,
-                              mixins.DestroyModelMixin,
-                              mixins.ListModelMixin,
-                              viewsets.GenericViewSet):
+# views.py
+
+class TransactionSplitViewSet(viewsets.ModelViewSet):
     serializer_class = TransactionSplitSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
     def get_queryset(self):
-        return TransactionSplit.objects.filter(transaction_id=self.kwargs["transaction_pk"],
-                                               transaction__user=self.request.user)
+        # Filter splits for the logged-in user & specific transaction
+        transaction_id = self.kwargs.get("transaction_pk")
+        return TransactionSplit.objects.filter(
+            transaction__id=transaction_id,
+            transaction__user=self.request.user
+        )
+
+    def perform_create(self, serializer):
+        # Get transaction from URL
+        transaction_id = self.kwargs.get("transaction_pk")
+        transaction = get_object_or_404(Transaction, id=transaction_id, user=self.request.user)
+
+        # Save split linked to this transaction
+        serializer.save(transaction=transaction)
 
 # Attachments  --------  Upload attachments to transactions
-class AttachmentViewSet(mixins.CreateModelMixin,
-                        mixins.DestroyModelMixin,
-                        mixins.ListModelMixin,
-                        viewsets.GenericViewSet):
+class AttachmentViewSet(viewsets.ModelViewSet):
+    queryset = Attachment.objects.all()
     serializer_class = AttachmentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
     def get_queryset(self):
-        return Attachment.objects.filter(transaction_id=self.kwargs.get("transaction_pk"),
-                                         transaction__user=self.request.user)
+        # User-ku kaliya arki karo attachments-ka transactions-kiisa
+        return Attachment.objects.filter(transaction__user=self.request.user)
+    
     def perform_create(self, serializer):
-        tx = Transaction.objects.get(pk=self.kwargs["transaction_pk"], user=self.request.user)
-        serializer.save(transaction=tx)
+        transaction = serializer.validated_data["transaction"]
+        if transaction.user != self.request.user:
+            raise PermissionError("You cannot add attachments to someone else's transaction.")
+        serializer.save()
 
 # -------- Recurring Bills --------  CRUD + generate transaction from bill.
 class RecurringBillViewSet(OwnedModelViewSet):
     queryset = RecurringBill.objects.all()
     serializer_class = RecurringBillSerializer
     filterset_class = RecurringBillFilter
+
 
     @action(detail=True, methods=["post"])
     def generate_transaction(self, request, pk=None):
